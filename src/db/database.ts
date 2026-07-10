@@ -1,9 +1,66 @@
 // All SQLite logic lives here — nothing else in the app touches the DB.
 import * as SQLite from 'expo-sqlite';
 
-let dbPromise = null;
+// Row shapes mirror the schema below: snake_case, integers for money (naira,
+// whole numbers) and for the is_active soft-delete flag.
+export interface Product {
+  id: number;
+  name: string;
+  price: number;
+  stock_qty: number;
+  low_stock_threshold: number;
+  is_active: number;
+  created_at: string;
+}
 
-async function init() {
+export interface Sale {
+  id: number;
+  total: number;
+  created_at: string;
+}
+
+export interface SaleItem {
+  id: number;
+  sale_id: number;
+  product_id: number;
+  product_name: string;
+  unit_price: number;
+  qty: number;
+}
+
+// What the Sell screen hands to recordSale.
+export interface CartItem {
+  productId: number;
+  qty: number;
+}
+
+export interface SaleWithItems extends Sale {
+  items: SaleItem[];
+}
+
+export interface SalesSummary {
+  revenue: number;
+  salesCount: number;
+  itemsSold: number;
+}
+
+export interface TopProduct {
+  productId: number;
+  name: string;
+  qtySold: number;
+  revenue: number;
+}
+
+export interface ProductUpdate {
+  name?: string;
+  price?: number;
+  stockQty?: number;
+  lowStockThreshold?: number;
+}
+
+let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
+
+async function init(): Promise<SQLite.SQLiteDatabase> {
   const db = await SQLite.openDatabaseAsync('shoptally.db');
   await db.execAsync(`
     PRAGMA journal_mode = WAL;
@@ -37,19 +94,24 @@ async function init() {
   return db;
 }
 
-export function getDb() {
+export function getDb(): Promise<SQLite.SQLiteDatabase> {
   if (!dbPromise) dbPromise = init();
   return dbPromise;
 }
 
-export async function listProducts() {
+export async function listProducts(): Promise<Product[]> {
   const db = await getDb();
-  return db.getAllAsync(
+  return db.getAllAsync<Product>(
     'SELECT * FROM products WHERE is_active = 1 ORDER BY name COLLATE NOCASE'
   );
 }
 
-export async function addProduct(name, price, stockQty = 0, lowStockThreshold = 5) {
+export async function addProduct(
+  name: string,
+  price: number,
+  stockQty = 0,
+  lowStockThreshold = 5
+): Promise<number> {
   const db = await getDb();
   const result = await db.runAsync(
     'INSERT INTO products (name, price, stock_qty, low_stock_threshold) VALUES (?, ?, ?, ?)',
@@ -58,19 +120,20 @@ export async function addProduct(name, price, stockQty = 0, lowStockThreshold = 
   return result.lastInsertRowId;
 }
 
-export async function updateProduct(id, fields) {
-  const columns = {
+export async function updateProduct(id: number, fields: ProductUpdate): Promise<void> {
+  const columns: Record<keyof ProductUpdate, string> = {
     name: 'name',
     price: 'price',
     stockQty: 'stock_qty',
     lowStockThreshold: 'low_stock_threshold',
   };
-  const sets = [];
-  const values = [];
-  for (const [key, column] of Object.entries(columns)) {
-    if (fields[key] !== undefined) {
-      sets.push(`${column} = ?`);
-      values.push(fields[key]);
+  const sets: string[] = [];
+  const values: (string | number)[] = [];
+  for (const key of Object.keys(columns) as (keyof ProductUpdate)[]) {
+    const value = fields[key];
+    if (value !== undefined) {
+      sets.push(`${columns[key]} = ?`);
+      values.push(value);
     }
   }
   if (sets.length === 0) return;
@@ -80,13 +143,13 @@ export async function updateProduct(id, fields) {
 }
 
 // Soft delete only — sales history references the product.
-export async function deactivateProduct(id) {
+export async function deactivateProduct(id: number): Promise<void> {
   const db = await getDb();
   await db.runAsync('UPDATE products SET is_active = 0 WHERE id = ?', [id]);
 }
 
 // Restocking or corrections. Stock never goes below 0.
-export async function adjustStock(id, delta) {
+export async function adjustStock(id: number, delta: number): Promise<void> {
   const db = await getDb();
   await db.runAsync(
     'UPDATE products SET stock_qty = MAX(0, stock_qty + ?) WHERE id = ?',
@@ -94,9 +157,10 @@ export async function adjustStock(id, delta) {
   );
 }
 
-// cartItems: [{ productId, qty }]
 // Runs in one transaction: any failure rolls the whole sale back.
-export async function recordSale(cartItems) {
+export async function recordSale(
+  cartItems: CartItem[]
+): Promise<{ saleId: number; total: number }> {
   if (!Array.isArray(cartItems) || cartItems.length === 0) {
     throw new Error('The cart is empty.');
   }
@@ -104,12 +168,12 @@ export async function recordSale(cartItems) {
   let saleId = 0;
   let total = 0;
   await db.withTransactionAsync(async () => {
-    const lines = [];
+    const lines: { product: Product; qty: number }[] = [];
     total = 0;
     for (const item of cartItems) {
       const qty = Math.round(item.qty);
       if (qty <= 0) continue;
-      const product = await db.getFirstAsync(
+      const product = await db.getFirstAsync<Product>(
         'SELECT * FROM products WHERE id = ? AND is_active = 1',
         [item.productId]
       );
@@ -141,37 +205,54 @@ export async function recordSale(cartItems) {
   return { saleId, total };
 }
 
-export async function getTodaySummary() {
+interface MoneyRow {
+  salesCount: number;
+  revenue: number;
+}
+
+interface ItemsRow {
+  itemsSold: number;
+}
+
+export async function getTodaySummary(): Promise<SalesSummary> {
   const db = await getDb();
-  const money = await db.getFirstAsync(
+  const money = await db.getFirstAsync<MoneyRow>(
     `SELECT COUNT(*) AS salesCount, COALESCE(SUM(total), 0) AS revenue
      FROM sales WHERE date(created_at) = date('now','localtime')`
   );
-  const items = await db.getFirstAsync(
+  const items = await db.getFirstAsync<ItemsRow>(
     `SELECT COALESCE(SUM(si.qty), 0) AS itemsSold
      FROM sale_items si JOIN sales s ON s.id = si.sale_id
      WHERE date(s.created_at) = date('now','localtime')`
   );
-  return { revenue: money.revenue, salesCount: money.salesCount, itemsSold: items.itemsSold };
+  return {
+    revenue: money?.revenue ?? 0,
+    salesCount: money?.salesCount ?? 0,
+    itemsSold: items?.itemsSold ?? 0,
+  };
 }
 
-export async function getWeekSummary() {
+export async function getWeekSummary(): Promise<SalesSummary> {
   const db = await getDb();
-  const money = await db.getFirstAsync(
+  const money = await db.getFirstAsync<MoneyRow>(
     `SELECT COUNT(*) AS salesCount, COALESCE(SUM(total), 0) AS revenue
      FROM sales WHERE date(created_at) >= date('now','localtime','-6 days')`
   );
-  const items = await db.getFirstAsync(
+  const items = await db.getFirstAsync<ItemsRow>(
     `SELECT COALESCE(SUM(si.qty), 0) AS itemsSold
      FROM sale_items si JOIN sales s ON s.id = si.sale_id
      WHERE date(s.created_at) >= date('now','localtime','-6 days')`
   );
-  return { revenue: money.revenue, salesCount: money.salesCount, itemsSold: items.itemsSold };
+  return {
+    revenue: money?.revenue ?? 0,
+    salesCount: money?.salesCount ?? 0,
+    itemsSold: items?.itemsSold ?? 0,
+  };
 }
 
-export async function getTopProducts(days = 7) {
+export async function getTopProducts(days = 7): Promise<TopProduct[]> {
   const db = await getDb();
-  return db.getAllAsync(
+  return db.getAllAsync<TopProduct>(
     `SELECT si.product_id AS productId,
             MAX(si.product_name) AS name,
             SUM(si.qty) AS qtySold,
@@ -185,24 +266,24 @@ export async function getTopProducts(days = 7) {
   );
 }
 
-export async function getRecentSales(limit = 10) {
+export async function getRecentSales(limit = 10): Promise<SaleWithItems[]> {
   const db = await getDb();
-  const sales = await db.getAllAsync(
+  const sales = await db.getAllAsync<Sale>(
     'SELECT * FROM sales ORDER BY id DESC LIMIT ?',
     [limit]
   );
   if (sales.length === 0) return [];
   const placeholders = sales.map(() => '?').join(', ');
-  const items = await db.getAllAsync(
+  const items = await db.getAllAsync<SaleItem>(
     `SELECT * FROM sale_items WHERE sale_id IN (${placeholders}) ORDER BY id`,
     sales.map((s) => s.id)
   );
   return sales.map((s) => ({ ...s, items: items.filter((i) => i.sale_id === s.id) }));
 }
 
-export async function getLowStockProducts() {
+export async function getLowStockProducts(): Promise<Product[]> {
   const db = await getDb();
-  return db.getAllAsync(
+  return db.getAllAsync<Product>(
     `SELECT * FROM products
      WHERE is_active = 1 AND stock_qty <= low_stock_threshold
      ORDER BY stock_qty ASC, name COLLATE NOCASE`

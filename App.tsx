@@ -19,12 +19,13 @@ import { type } from './src/theme';
 import SellScreen from './src/screens/SellScreen';
 import InventoryScreen from './src/screens/InventoryScreen';
 import ReportsScreen from './src/screens/ReportsScreen';
+import type { RootTabParamList } from './src/navigation/types';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
-const Tab = createBottomTabNavigator();
+const Tab = createBottomTabNavigator<RootTabParamList>();
 
-function TabIcon({ emoji, focused }) {
+function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
   const { colors } = useTheme();
   return (
     <View style={styles.tabIcon}>

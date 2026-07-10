@@ -4,7 +4,14 @@ import Animated, { FadeInUp, FadeOut } from 'react-native-reanimated';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, type, radius } from '../theme';
 
-export default function Toast({ message, onHide, duration = 2000, bottom = 120 }) {
+interface ToastProps {
+  message: string;
+  onHide: () => void;
+  duration?: number;
+  bottom?: number;
+}
+
+export default function Toast({ message, onHide, duration = 2000, bottom = 120 }: ToastProps) {
   const { colors } = useTheme();
 
   useEffect(() => {

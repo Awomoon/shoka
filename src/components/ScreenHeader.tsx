@@ -5,9 +5,14 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, type } from '../theme';
 import { getGreeting, formatTodayLong } from '../utils/format';
 
+interface ScreenHeaderProps {
+  title: string;
+  action?: React.ReactNode;
+}
+
 // Replaces the stock navigation header: screen title on the left,
 // contextual action (theme toggle, "+ Add") on the right.
-export default function ScreenHeader({ title, action }) {
+export default function ScreenHeader({ title, action }: ScreenHeaderProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   return (

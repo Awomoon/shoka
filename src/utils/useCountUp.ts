@@ -1,13 +1,20 @@
 import { useEffect, useState } from 'react';
 
+interface CountUpOptions {
+  duration?: number;
+  enabled?: boolean;
+  restartKey?: number;
+  delay?: number;
+}
+
 // Counts from 0 to target with an ease-out curve. `restartKey` retriggers it
 // (e.g. every time the screen gains focus). `delay` holds at 0 first, so the
 // count can start after its card's entrance lands. When disabled, jumps
 // straight to target.
 export default function useCountUp(
-  target,
-  { duration = 600, enabled = true, restartKey = 0, delay = 0 } = {}
-) {
+  target: number,
+  { duration = 600, enabled = true, restartKey = 0, delay = 0 }: CountUpOptions = {}
+): number {
   const [value, setValue] = useState(enabled ? 0 : target);
 
   useEffect(() => {
@@ -15,7 +22,7 @@ export default function useCountUp(
       setValue(target);
       return undefined;
     }
-    let raf;
+    let raf: number | undefined;
     setValue(0);
     const startTicking = () => {
       const start = Date.now();
@@ -30,7 +37,7 @@ export default function useCountUp(
     const timer = setTimeout(startTicking, delay);
     return () => {
       clearTimeout(timer);
-      cancelAnimationFrame(raf);
+      if (raf !== undefined) cancelAnimationFrame(raf);
     };
   }, [target, duration, enabled, restartKey, delay]);
 

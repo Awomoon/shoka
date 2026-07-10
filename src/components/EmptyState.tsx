@@ -4,8 +4,16 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, type, touch, radius } from '../theme';
 import PressableScale from './PressableScale';
 
+interface EmptyStateProps {
+  emoji: string;
+  title: string;
+  subtitle?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}
+
 // Every empty state offers a next action.
-export default function EmptyState({ emoji, title, subtitle, actionLabel, onAction }) {
+export default function EmptyState({ emoji, title, subtitle, actionLabel, onAction }: EmptyStateProps) {
   const { colors } = useTheme();
   return (
     <View style={styles.wrap}>

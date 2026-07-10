@@ -2,10 +2,11 @@ import React from 'react';
 import { Text, StyleSheet } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, type } from '../theme';
+import type { ThemeMode } from '../theme';
 import PressableScale from './PressableScale';
 
-const NEXT = { system: 'light', light: 'dark', dark: 'system' };
-const LABEL = { system: '🌓 System', light: '☀️ Light', dark: '🌙 Dark' };
+const NEXT: Record<ThemeMode, ThemeMode> = { system: 'light', light: 'dark', dark: 'system' };
+const LABEL: Record<ThemeMode, string> = { system: '🌓 System', light: '☀️ Light', dark: '🌙 Dark' };
 
 // Lives in the Reports header only — the Sell screen stays free of everything but selling.
 export default function ThemeToggle() {

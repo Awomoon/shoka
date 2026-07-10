@@ -1,7 +1,33 @@
 // Single source of truth for colors, spacing and font sizes.
 // Rule: no component ever hardcodes a color — everything comes from here.
 
-export const palettes = {
+import type { ViewStyle } from 'react-native';
+
+export type ResolvedTheme = 'light' | 'dark';
+export type ThemeMode = ResolvedTheme | 'system';
+
+export interface Palette {
+  primary: string;
+  onPrimary: string;
+  accent: string;
+  onAccent: string;
+  danger: string;
+  onDanger: string;
+  background: string;
+  card: string;
+  raised: string;
+  text: string;
+  muted: string;
+  border: string;
+  subtle: string;
+  tint: string;
+  overlay: string;
+  overlayText: string;
+  toastBg: string;
+  toastText: string;
+}
+
+export const palettes: Record<ResolvedTheme, Palette> = {
   light: {
     primary: '#0B5D3B',
     onPrimary: '#FFFFFF',
@@ -51,12 +77,12 @@ export const radius = {
   md: 16,
   lg: 20,
   pill: 999,
-};
+} as const;
 
 // Elevation recipe per theme. Light mode floats cards with a soft shadow;
 // dark mode uses the `raised` surface color step instead — shadows are
 // invisible on dark backgrounds, so `dark` stays empty on purpose.
-export const elevations = {
+export const elevations: Record<ResolvedTheme, ViewStyle> = {
   light: {
     shadowColor: '#000000',
     shadowOpacity: 0.07,
@@ -73,7 +99,7 @@ export const spacing = {
   md: 12,
   lg: 16,
   xl: 24,
-};
+} as const;
 
 // Price numbers are the hero of every screen.
 export const type = {
@@ -85,9 +111,9 @@ export const type = {
   cardName: 15,
   label: 13,
   small: 12,
-};
+} as const;
 
 export const touch = {
   minTarget: 56,
   button: 64,
-};
+} as const;

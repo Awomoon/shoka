@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, RefreshControl, StyleSheet } from 'react-native';
+import type { StyleProp, ViewStyle } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import Animated, {
   FadeInDown,
@@ -16,6 +17,7 @@ import {
   getRecentSales,
   getLowStockProducts,
 } from '../db/database';
+import type { Product, SalesSummary, SaleWithItems, TopProduct } from '../db/database';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, type, radius } from '../theme';
 import { formatNaira, formatSaleTime } from '../utils/format';
@@ -25,7 +27,13 @@ import EmptyState from '../components/EmptyState';
 import ScreenHeader from '../components/ScreenHeader';
 import ThemeToggle from '../components/ThemeToggle';
 
-function Card({ children, index = 0, style }) {
+interface CardProps {
+  children: React.ReactNode;
+  index?: number;
+  style?: StyleProp<ViewStyle>;
+}
+
+function Card({ children, index = 0, style }: CardProps) {
   const { colors, elevation } = useTheme();
   const reduceMotion = useReducedMotion();
   return (
@@ -38,7 +46,7 @@ function Card({ children, index = 0, style }) {
   );
 }
 
-function SectionLabel({ children, color }) {
+function SectionLabel({ children, color }: { children: React.ReactNode; color?: string }) {
   const { colors } = useTheme();
   return (
     <Text style={[styles.sectionLabel, { color: color || colors.muted }]}>{children}</Text>
@@ -49,14 +57,14 @@ export default function ReportsScreen() {
   const { colors, elevation } = useTheme();
   const reduceMotion = useReducedMotion();
 
-  const [today, setToday] = useState(null);
-  const [week, setWeek] = useState(null);
-  const [low, setLow] = useState([]);
-  const [top, setTop] = useState([]);
-  const [recent, setRecent] = useState([]);
-  const [expanded, setExpanded] = useState(null);
+  const [today, setToday] = useState<SalesSummary | null>(null);
+  const [week, setWeek] = useState<SalesSummary | null>(null);
+  const [low, setLow] = useState<Product[]>([]);
+  const [top, setTop] = useState<TopProduct[]>([]);
+  const [recent, setRecent] = useState<SaleWithItems[]>([]);
+  const [expanded, setExpanded] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [loadError, setLoadError] = useState(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [focusKey, setFocusKey] = useState(0);
 
   const load = useCallback(async () => {
@@ -208,7 +216,7 @@ export default function ReportsScreen() {
                     styles.topBar,
                     {
                       backgroundColor: colors.tint,
-                      width: `${Math.max(8, (p.qtySold / maxTopQty) * 100)}%`,
+                      width: `${Math.max(8, (p.qtySold / maxTopQty) * 100)}%` as const,
                     },
                   ]}
                 />
@@ -354,8 +362,10 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   topBar: {
-    ...StyleSheet.absoluteFillObject,
-    right: undefined,
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
     borderRadius: radius.sm,
   },
   topRowContent: {

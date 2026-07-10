@@ -1,5 +1,5 @@
 // All money in the app is naira as whole numbers.
-export function formatNaira(amount) {
+export function formatNaira(amount: number): string {
   const n = Math.round(Number(amount) || 0);
   const sign = n < 0 ? '-' : '';
   const digits = String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -9,7 +9,7 @@ export function formatNaira(amount) {
 // SQLite gives us 'YYYY-MM-DD HH:MM:SS' in local time.
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-export function formatSaleTime(createdAt) {
+export function formatSaleTime(createdAt: string): string {
   const [datePart, timePart] = String(createdAt || '').split(' ');
   if (!datePart || !timePart) return String(createdAt || '');
   const [y, m, d] = datePart.split('-').map(Number);
@@ -26,18 +26,18 @@ const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frida
 const MONTHS_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 // Sell-screen greeting row: "Good morning" / "Thursday, 10 July".
-export function getGreeting(date = new Date()) {
+export function getGreeting(date: Date = new Date()): string {
   const h = date.getHours();
   if (h < 12) return 'Good morning';
   if (h < 17) return 'Good afternoon';
   return 'Good evening';
 }
 
-export function formatTodayLong(date = new Date()) {
+export function formatTodayLong(date: Date = new Date()): string {
   return `${WEEKDAYS[date.getDay()]}, ${date.getDate()} ${MONTHS_FULL[date.getMonth()]}`;
 }
 
-export function parseIntSafe(text) {
+export function parseIntSafe(text: string | null | undefined): number | null {
   const digits = String(text ?? '').replace(/[^0-9]/g, '');
   if (digits === '') return null;
   const n = parseInt(digits, 10);

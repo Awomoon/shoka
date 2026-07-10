@@ -6,6 +6,7 @@ import {
   Alert,
   StyleSheet,
 } from 'react-native';
+import type { KeyboardTypeOptions, ListRenderItem } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -14,6 +15,7 @@ import {
   BottomSheetBackdrop,
   BottomSheetTextInput,
 } from '@gorhom/bottom-sheet';
+import type { BottomSheetBackdropProps } from '@gorhom/bottom-sheet';
 import Animated, {
   FadeInDown,
   LinearTransition,
@@ -30,6 +32,7 @@ import {
   deactivateProduct,
   adjustStock,
 } from '../db/database';
+import type { Product } from '../db/database';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, type, touch, radius } from '../theme';
 import { formatNaira, parseIntSafe } from '../utils/format';
@@ -40,9 +43,26 @@ import ScreenHeader from '../components/ScreenHeader';
 
 const STAGGER_CAP = 10;
 
+interface AddForm {
+  name: string;
+  price: string;
+  stock: string;
+  threshold: string;
+}
+
+interface EditForm {
+  name: string;
+  price: string;
+  threshold: string;
+  restock: string;
+}
+
+type AddErrors = Partial<Record<keyof AddForm, string>>;
+type EditErrors = Partial<Record<keyof EditForm, string>>;
+
 // Left edge of each product card: green = healthy, yellow = at the
 // threshold, red = below it. Cross-fades when a sale moves it.
-function StockStrip({ stock, threshold }) {
+function StockStrip({ stock, threshold }: { stock: number; threshold: number }) {
   const { colors } = useTheme();
   const reduceMotion = useReducedMotion();
   const color =
@@ -55,7 +75,17 @@ function StockStrip({ stock, threshold }) {
   return <Animated.View style={[styles.strip, style]} />;
 }
 
-function Field({ label, value, onChangeText, placeholder, keyboardType, autoFocus, error }) {
+interface FieldProps {
+  label: string;
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder?: string;
+  keyboardType?: KeyboardTypeOptions;
+  autoFocus?: boolean;
+  error?: string;
+}
+
+function Field({ label, value, onChangeText, placeholder, keyboardType, autoFocus, error }: FieldProps) {
   const { colors } = useTheme();
   const [focused, setFocused] = useState(false);
   return (
@@ -84,13 +114,22 @@ function Field({ label, value, onChangeText, placeholder, keyboardType, autoFocu
   );
 }
 
+interface FormSheetProps {
+  title: string;
+  onDismiss?: () => void;
+  children: React.ReactNode;
+}
+
 // Form sheet shared by Add and Edit. Content scrolls; keyboard pushes the
 // sheet up instead of covering the focused field.
-const FormSheet = React.forwardRef(function FormSheet({ title, onDismiss, children }, ref) {
+const FormSheet = React.forwardRef<BottomSheetModal, FormSheetProps>(function FormSheet(
+  { title, onDismiss, children },
+  ref
+) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const renderBackdrop = useCallback(
-    (props) => (
+    (props: BottomSheetBackdropProps) => (
       <BottomSheetBackdrop
         {...props}
         appearsOnIndex={0}
@@ -133,20 +172,20 @@ export default function InventoryScreen() {
   const { colors, elevation } = useTheme();
   const reduceMotion = useReducedMotion();
 
-  const [products, setProducts] = useState([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   // Add form
-  const [addForm, setAddForm] = useState({ name: '', price: '', stock: '', threshold: '' });
-  const [addErrors, setAddErrors] = useState({});
-  const addRef = useRef(null);
+  const [addForm, setAddForm] = useState<AddForm>({ name: '', price: '', stock: '', threshold: '' });
+  const [addErrors, setAddErrors] = useState<AddErrors>({});
+  const addRef = useRef<BottomSheetModal>(null);
 
   // Edit sheet
-  const [editing, setEditing] = useState(null); // product row
-  const [editForm, setEditForm] = useState({ name: '', price: '', threshold: '', restock: '' });
-  const [editErrors, setEditErrors] = useState({});
-  const editRef = useRef(null);
+  const [editing, setEditing] = useState<Product | null>(null);
+  const [editForm, setEditForm] = useState<EditForm>({ name: '', price: '', threshold: '', restock: '' });
+  const [editErrors, setEditErrors] = useState<EditErrors>({});
+  const editRef = useRef<BottomSheetModal>(null);
 
   const load = useCallback(async () => {
     try {
@@ -165,7 +204,7 @@ export default function InventoryScreen() {
   );
 
   // Low-stock products sort to the top.
-  const isLow = (p) => p.stock_qty <= p.low_stock_threshold;
+  const isLow = (p: Product) => p.stock_qty <= p.low_stock_threshold;
   const sorted = useMemo(() => {
     return [...products].sort((a, b) => {
       if (isLow(a) !== isLow(b)) return isLow(a) ? -1 : 1;
@@ -181,7 +220,7 @@ export default function InventoryScreen() {
   };
 
   const saveAdd = async () => {
-    const errors = {};
+    const errors: AddErrors = {};
     const name = addForm.name.trim();
     const price = parseIntSafe(addForm.price);
     const stock = addForm.stock.trim() === '' ? 0 : parseIntSafe(addForm.stock);
@@ -191,7 +230,7 @@ export default function InventoryScreen() {
     if (stock === null || stock < 0) errors.stock = 'Stock must be 0 or more.';
     if (threshold === null || threshold < 0) errors.threshold = 'Must be 0 or more.';
     setAddErrors(errors);
-    if (Object.keys(errors).length > 0) return;
+    if (Object.keys(errors).length > 0 || price === null || stock === null || threshold === null) return;
     try {
       await addProduct(name, price, stock, threshold);
       addRef.current?.dismiss();
@@ -202,7 +241,7 @@ export default function InventoryScreen() {
     }
   };
 
-  const openEdit = (product) => {
+  const openEdit = (product: Product) => {
     setEditForm({
       name: product.name,
       price: String(product.price),
@@ -215,7 +254,8 @@ export default function InventoryScreen() {
   };
 
   const saveEdit = async () => {
-    const errors = {};
+    if (!editing) return;
+    const errors: EditErrors = {};
     const name = editForm.name.trim();
     const price = parseIntSafe(editForm.price);
     const threshold = editForm.threshold.trim() === '' ? 5 : parseIntSafe(editForm.threshold);
@@ -223,7 +263,7 @@ export default function InventoryScreen() {
     if (price === null || price <= 0) errors.price = 'Price must be more than ₦0.';
     if (threshold === null || threshold < 0) errors.threshold = 'Must be 0 or more.';
     setEditErrors(errors);
-    if (Object.keys(errors).length > 0) return;
+    if (Object.keys(errors).length > 0 || price === null || threshold === null) return;
     try {
       await updateProduct(editing.id, { name, price, lowStockThreshold: threshold });
       editRef.current?.dismiss();
@@ -235,6 +275,7 @@ export default function InventoryScreen() {
   };
 
   const doRestock = async () => {
+    if (!editing) return;
     const qty = parseIntSafe(editForm.restock);
     if (qty === null || qty <= 0) {
       setEditErrors({ ...editErrors, restock: 'Enter how many you are adding.' });
@@ -251,9 +292,11 @@ export default function InventoryScreen() {
   };
 
   const confirmRemove = () => {
+    if (!editing) return;
+    const target = editing;
     Alert.alert(
       'Remove product?',
-      `${editing.name} will no longer show on the Sell screen. Past sales keep it.`,
+      `${target.name} will no longer show on the Sell screen. Past sales keep it.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -261,7 +304,7 @@ export default function InventoryScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await deactivateProduct(editing.id);
+              await deactivateProduct(target.id);
               editRef.current?.dismiss();
               setToast('Product removed');
               load();
@@ -274,7 +317,7 @@ export default function InventoryScreen() {
     );
   };
 
-  const renderProduct = ({ item, index }) => (
+  const renderProduct: ListRenderItem<Product> = ({ item, index }) => (
     <Animated.View
       entering={
         reduceMotion

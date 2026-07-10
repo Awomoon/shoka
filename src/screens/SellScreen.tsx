@@ -8,7 +8,9 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
+import type { ListRenderItem } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import {
@@ -18,6 +20,7 @@ import {
   BottomSheetFooter,
   useBottomSheetSpringConfigs,
 } from '@gorhom/bottom-sheet';
+import type { BottomSheetBackdropProps, BottomSheetFooterProps } from '@gorhom/bottom-sheet';
 import Animated, {
   FadeInDown,
   FadeOut,
@@ -35,6 +38,7 @@ import Animated, {
   ReduceMotion,
 } from 'react-native-reanimated';
 import { listProducts, recordSale } from '../db/database';
+import type { Product } from '../db/database';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, type, touch, radius } from '../theme';
 import { formatNaira } from '../utils/format';
@@ -43,13 +47,28 @@ import Toast from '../components/Toast';
 import SuccessOverlay from '../components/SuccessOverlay';
 import EmptyState from '../components/EmptyState';
 import { GreetingHeader } from '../components/ScreenHeader';
+import type { RootTabParamList } from '../navigation/types';
 
 // Fat-finger protection: confirm before recording unusually large sales.
 const LARGE_SALE_THRESHOLD = 500000;
 const STAGGER_CAP = 10;
 const POP_SPRING = { damping: 12, stiffness: 400 };
 
-function ProductCard({ item, inCart, onAdd, index }) {
+type SellScreenProps = BottomTabScreenProps<RootTabParamList, 'Sell'>;
+
+interface CartLine {
+  product: Product;
+  qty: number;
+}
+
+interface ProductCardProps {
+  item: Product;
+  inCart: number;
+  onAdd: (product: Product) => boolean;
+  index: number;
+}
+
+function ProductCard({ item, inCart, onAdd, index }: ProductCardProps) {
   const { colors, elevation } = useTheme();
   const reduceMotion = useReducedMotion();
   const out = item.stock_qty <= 0;
@@ -122,21 +141,21 @@ function ProductCard({ item, inCart, onAdd, index }) {
   );
 }
 
-export default function SellScreen({ navigation }) {
+export default function SellScreen({ navigation }: SellScreenProps) {
   const { colors, elevation } = useTheme();
   const reduceMotion = useReducedMotion();
   const insets = useSafeAreaInsets();
 
-  const [products, setProducts] = useState([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [cart, setCart] = useState({}); // productId -> qty
+  const [cart, setCart] = useState<Record<number, number>>({}); // productId -> qty
   const [submitting, setSubmitting] = useState(false);
-  const [toast, setToast] = useState(null);
-  const [success, setSuccess] = useState(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
-  const sheetRef = useRef(null);
+  const sheetRef = useRef<BottomSheetModal>(null);
 
   const load = useCallback(async () => {
     try {
@@ -162,10 +181,10 @@ export default function SellScreen({ navigation }) {
     return products.filter((p) => p.name.toLowerCase().includes(q));
   }, [products, search]);
 
-  const cartLines = useMemo(
+  const cartLines = useMemo<CartLine[]>(
     () =>
       products
-        .filter((p) => cart[p.id] > 0)
+        .filter((p) => (cart[p.id] ?? 0) > 0)
         .map((p) => ({ product: p, qty: cart[p.id] })),
     [products, cart]
   );
@@ -198,7 +217,7 @@ export default function SellScreen({ navigation }) {
     mass: 1,
   });
 
-  const addToCart = (product) => {
+  const addToCart = (product: Product): boolean => {
     if (product.stock_qty <= 0) {
       setToast('Out of stock');
       return false;
@@ -213,7 +232,7 @@ export default function SellScreen({ navigation }) {
     return true;
   };
 
-  const changeQty = (product, delta) => {
+  const changeQty = (product: Product, delta: number) => {
     const current = cart[product.id] || 0;
     const next = current + delta;
     if (delta > 0 && next > product.stock_qty) return;
@@ -223,7 +242,7 @@ export default function SellScreen({ navigation }) {
     setCart(nextCart);
   };
 
-  const removeLine = (product) => {
+  const removeLine = (product: Product) => {
     const nextCart = { ...cart };
     delete nextCart[product.id];
     setCart(nextCart);
@@ -241,7 +260,10 @@ export default function SellScreen({ navigation }) {
         setSuccess(`Sale recorded — ${formatNaira(total)}`);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       } catch (e) {
-        Alert.alert('Sale not recorded', e.message || 'Something went wrong. Please try again.');
+        Alert.alert(
+          'Sale not recorded',
+          e instanceof Error && e.message ? e.message : 'Something went wrong. Please try again.'
+        );
       } finally {
         setSubmitting(false);
         load();
@@ -258,7 +280,7 @@ export default function SellScreen({ navigation }) {
   };
 
   const renderBackdrop = useCallback(
-    (props) => (
+    (props: BottomSheetBackdropProps) => (
       <BottomSheetBackdrop
         {...props}
         appearsOnIndex={0}
@@ -271,7 +293,7 @@ export default function SellScreen({ navigation }) {
   );
 
   const renderFooter = useCallback(
-    (props) => (
+    (props: BottomSheetFooterProps) => (
       <BottomSheetFooter {...props} bottomInset={insets.bottom + spacing.md}>
         <View style={styles.footerWrap}>
           <PressableScale
@@ -294,7 +316,7 @@ export default function SellScreen({ navigation }) {
     [insets.bottom, submitting, cartTotal, cartLines, colors]
   );
 
-  const renderProduct = ({ item, index }) => (
+  const renderProduct: ListRenderItem<Product> = ({ item, index }) => (
     <ProductCard item={item} inCart={cart[item.id] || 0} onAdd={addToCart} index={index} />
   );
 
