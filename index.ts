@@ -1,3 +1,7 @@
+// Must be the first import so gesture handlers register before any
+// navigation or sheet code runs (required on Android release builds).
+import 'react-native-gesture-handler';
+
 import { registerRootComponent } from 'expo';
 
 import App from './App';
