@@ -21,6 +21,7 @@ import Animated, {
   useAnimatedStyle,
   withTiming,
   useReducedMotion,
+  ReduceMotion,
 } from 'react-native-reanimated';
 import {
   listProducts,
@@ -106,6 +107,9 @@ const FormSheet = React.forwardRef(function FormSheet({ title, onDismiss, childr
       snapPoints={['75%', '90%']}
       enableDynamicSizing={false}
       enablePanDownToClose
+      // Sheets must open even when the phone has system animations off
+      // (reduced motion) — otherwise they stay stuck off-screen.
+      overrideReduceMotion={ReduceMotion.Never}
       keyboardBehavior="extend"
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"

@@ -32,6 +32,7 @@ import Animated, {
   withSpring,
   withTiming,
   useReducedMotion,
+  ReduceMotion,
 } from 'react-native-reanimated';
 import { listProducts, recordSale } from '../db/database';
 import { useTheme } from '../theme/ThemeContext';
@@ -362,9 +363,13 @@ export default function SellScreen({ navigation }) {
             <Text style={[styles.cartBarCount, { color: colors.onPrimary }]}>
               {cartCount} {cartCount === 1 ? 'item' : 'items'} ▸
             </Text>
-            <Animated.Text style={[styles.cartBarTotal, { color: colors.accent }, pulseStyle]}>
-              {formatNaira(cartTotal)}
-            </Animated.Text>
+            {/* Pulse the wrapper, not the Text: Animated.Text doesn't re-measure
+                when the amount grows a digit, which clips the last character. */}
+            <Animated.View style={pulseStyle}>
+              <Text style={[styles.cartBarTotal, { color: colors.accent }]}>
+                {formatNaira(cartTotal)}
+              </Text>
+            </Animated.View>
           </PressableScale>
         </Animated.View>
       )}
@@ -374,7 +379,11 @@ export default function SellScreen({ navigation }) {
         snapPoints={['50%', '90%']}
         enableDynamicSizing={false}
         enablePanDownToClose
-        animationConfigs={reduceMotion ? undefined : sheetAnimation}
+        animationConfigs={sheetAnimation}
+        // Phones with system animations off (common on budget Androids) map to
+        // reduced motion, which leaves the sheet stuck off-screen. Opening the
+        // cart is functional motion, so it must always run.
+        overrideReduceMotion={ReduceMotion.Never}
         backdropComponent={renderBackdrop}
         footerComponent={renderFooter}
         backgroundStyle={[styles.sheetBg, { backgroundColor: colors.card }]}
