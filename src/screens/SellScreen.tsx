@@ -13,8 +13,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import {
-  BottomSheetModal,
+import BottomSheet, {
   BottomSheetScrollView,
   BottomSheetBackdrop,
   BottomSheetFooter,
@@ -129,11 +128,18 @@ function ProductCard({ item, inCart, onAdd, index }: ProductCardProps) {
           {out ? 'Out of stock' : `${item.stock_qty} left`}
         </Text>
         {inCart > 0 && (
+          // Entering animation and animated transform must live on different
+          // nodes, or the layout animation overwrites the transform (and
+          // Reanimated warns): outer owns entering, inner owns the pulse.
           <Animated.View
             entering={reduceMotion ? undefined : ZoomIn.springify().damping(12)}
-            style={[styles.qtyBadge, { backgroundColor: colors.accent }, badgeStyle]}
+            style={styles.qtyBadgeWrap}
           >
-            <Text style={[styles.qtyBadgeText, { color: colors.onAccent }]}>{inCart}</Text>
+            <Animated.View
+              style={[styles.qtyBadge, { backgroundColor: colors.accent }, badgeStyle]}
+            >
+              <Text style={[styles.qtyBadgeText, { color: colors.onAccent }]}>{inCart}</Text>
+            </Animated.View>
           </Animated.View>
         )}
       </PressableScale>
@@ -155,7 +161,7 @@ export default function SellScreen({ navigation }: SellScreenProps) {
   const [toast, setToast] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const sheetRef = useRef<BottomSheetModal>(null);
+  const sheetRef = useRef<BottomSheet>(null);
 
   const load = useCallback(async () => {
     try {
@@ -191,11 +197,13 @@ export default function SellScreen({ navigation }: SellScreenProps) {
   const cartCount = cartLines.reduce((sum, l) => sum + l.qty, 0);
   const cartTotal = cartLines.reduce((sum, l) => sum + l.qty * l.product.price, 0);
 
-  // Total "pulses" each time an item lands in the cart.
+  // Total "pulses" each time an item lands in the cart — except the very
+  // first add: the bar is mid-entering then, and a simultaneous transform
+  // gets overwritten by the layout animation, freezing the text mid-scale.
   const pulse = useSharedValue(1);
   const prevTotal = useRef(0);
   useEffect(() => {
-    if (cartTotal > prevTotal.current && !reduceMotion) {
+    if (cartTotal > prevTotal.current && prevTotal.current > 0 && !reduceMotion) {
       pulse.value = withSequence(
         withTiming(1.15, { duration: 100 }),
         withTiming(1, { duration: 130 })
@@ -207,7 +215,7 @@ export default function SellScreen({ navigation }: SellScreenProps) {
 
   // If the cart empties from inside the sheet, the sheet has nothing to show.
   useEffect(() => {
-    if (cartLines.length === 0) sheetRef.current?.dismiss();
+    if (cartLines.length === 0) sheetRef.current?.close();
   }, [cartLines.length]);
 
   // Snappy sheet physics: high damping so it settles without wobbling.
@@ -256,7 +264,7 @@ export default function SellScreen({ navigation }: SellScreenProps) {
           cartLines.map((l) => ({ productId: l.product.id, qty: l.qty }))
         );
         setCart({});
-        sheetRef.current?.dismiss();
+        sheetRef.current?.close();
         setSuccess(`Sale recorded — ${formatNaira(total)}`);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       } catch (e) {
@@ -378,7 +386,7 @@ export default function SellScreen({ navigation }: SellScreenProps) {
           style={styles.cartBarWrap}
         >
           <PressableScale
-            onPress={() => sheetRef.current?.present()}
+            onPress={() => sheetRef.current?.snapToIndex(0)}
             scaleTo={0.98}
             style={[styles.cartBar, { backgroundColor: colors.primary }]}
           >
@@ -387,7 +395,7 @@ export default function SellScreen({ navigation }: SellScreenProps) {
             </Text>
             {/* Pulse the wrapper, not the Text: Animated.Text doesn't re-measure
                 when the amount grows a digit, which clips the last character. */}
-            <Animated.View style={pulseStyle}>
+            <Animated.View style={[styles.totalWrap, pulseStyle]}>
               <Text style={[styles.cartBarTotal, { color: colors.accent }]}>
                 {formatNaira(cartTotal)}
               </Text>
@@ -396,8 +404,13 @@ export default function SellScreen({ navigation }: SellScreenProps) {
         </Animated.View>
       )}
 
-      <BottomSheetModal
+      {/* Plain in-screen BottomSheet, not BottomSheetModal: the modal renders
+          through a portal at the provider, and on the new architecture the
+          native screen containers can sit above it, so it never becomes
+          visible. In-screen sheets have no portal to lose. */}
+      <BottomSheet
         ref={sheetRef}
+        index={-1}
         snapPoints={['50%', '90%']}
         enableDynamicSizing={false}
         enablePanDownToClose
@@ -469,7 +482,7 @@ export default function SellScreen({ navigation }: SellScreenProps) {
             </Text>
           </View>
         </BottomSheetScrollView>
-      </BottomSheetModal>
+      </BottomSheet>
 
       {toast && <Toast message={toast} onHide={() => setToast(null)} />}
       {success && <SuccessOverlay message={success} onDone={() => setSuccess(null)} />}
@@ -536,10 +549,12 @@ const styles = StyleSheet.create({
     fontSize: type.label,
     marginTop: spacing.xs,
   },
-  qtyBadge: {
+  qtyBadgeWrap: {
     position: 'absolute',
     top: -8,
     right: -8,
+  },
+  qtyBadge: {
     minWidth: 32,
     height: 32,
     borderRadius: radius.pill,
@@ -575,6 +590,9 @@ const styles = StyleSheet.create({
   cartBarCount: {
     fontSize: type.body,
     fontWeight: '700',
+  },
+  totalWrap: {
+    flexShrink: 0, // the amount never gives up width — clipping money is worse than wrapping the label
   },
   cartBarTotal: {
     fontSize: type.price,

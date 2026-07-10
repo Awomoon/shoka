@@ -4,7 +4,6 @@ import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import * as SystemUI from 'expo-system-ui';
@@ -84,38 +83,36 @@ function ThemedApp() {
   return (
     <Animated.View style={[{ flex: 1, backgroundColor: colors.background }, fadeStyle]}>
       <NavigationContainer theme={navTheme}>
-        <BottomSheetModalProvider>
-          <Tab.Navigator
-            screenOptions={{
-              // Screens render their own headers (ScreenHeader / GreetingHeader).
-              headerShown: false,
-              // Quick fade between tabs — slides feel slow when switching often.
-              animation: reduceMotion ? 'none' : 'fade',
-              transitionSpec: { animation: 'timing', config: { duration: 150 } },
-              tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border },
-              tabBarActiveTintColor: colors.primary,
-              tabBarInactiveTintColor: colors.muted,
-              tabBarLabelStyle: { fontSize: type.label, fontWeight: '600' },
-              tabBarItemStyle: { paddingVertical: 4 },
-            }}
-          >
-            <Tab.Screen
-              name="Sell"
-              component={SellScreen}
-              options={{ tabBarIcon: ({ focused }) => <TabIcon emoji="🛒" focused={focused} /> }}
-            />
-            <Tab.Screen
-              name="Stock"
-              component={InventoryScreen}
-              options={{ tabBarIcon: ({ focused }) => <TabIcon emoji="📦" focused={focused} /> }}
-            />
-            <Tab.Screen
-              name="Reports"
-              component={ReportsScreen}
-              options={{ tabBarIcon: ({ focused }) => <TabIcon emoji="📊" focused={focused} /> }}
-            />
-          </Tab.Navigator>
-        </BottomSheetModalProvider>
+        <Tab.Navigator
+          screenOptions={{
+            // Screens render their own headers (ScreenHeader / GreetingHeader).
+            headerShown: false,
+            // Quick fade between tabs — slides feel slow when switching often.
+            animation: reduceMotion ? 'none' : 'fade',
+            transitionSpec: { animation: 'timing', config: { duration: 150 } },
+            tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border },
+            tabBarActiveTintColor: colors.primary,
+            tabBarInactiveTintColor: colors.muted,
+            tabBarLabelStyle: { fontSize: type.label, fontWeight: '600' },
+            tabBarItemStyle: { paddingVertical: 4 },
+          }}
+        >
+          <Tab.Screen
+            name="Sell"
+            component={SellScreen}
+            options={{ tabBarIcon: ({ focused }) => <TabIcon emoji="🛒" focused={focused} /> }}
+          />
+          <Tab.Screen
+            name="Stock"
+            component={InventoryScreen}
+            options={{ tabBarIcon: ({ focused }) => <TabIcon emoji="📦" focused={focused} /> }}
+          />
+          <Tab.Screen
+            name="Reports"
+            component={ReportsScreen}
+            options={{ tabBarIcon: ({ focused }) => <TabIcon emoji="📊" focused={focused} /> }}
+          />
+        </Tab.Navigator>
       </NavigationContainer>
       <StatusBar style={resolved === 'dark' ? 'light' : 'dark'} />
     </Animated.View>

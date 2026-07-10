@@ -9,8 +9,7 @@ import {
 import type { KeyboardTypeOptions, ListRenderItem } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  BottomSheetModal,
+import BottomSheet, {
   BottomSheetScrollView,
   BottomSheetBackdrop,
   BottomSheetTextInput,
@@ -121,8 +120,10 @@ interface FormSheetProps {
 }
 
 // Form sheet shared by Add and Edit. Content scrolls; keyboard pushes the
-// sheet up instead of covering the focused field.
-const FormSheet = React.forwardRef<BottomSheetModal, FormSheetProps>(function FormSheet(
+// sheet up instead of covering the focused field. In-screen BottomSheet, not
+// BottomSheetModal — the modal's portal can render behind the native screen
+// containers on the new architecture and never become visible.
+const FormSheet = React.forwardRef<BottomSheet, FormSheetProps>(function FormSheet(
   { title, onDismiss, children },
   ref
 ) {
@@ -141,8 +142,9 @@ const FormSheet = React.forwardRef<BottomSheetModal, FormSheetProps>(function Fo
     [colors.overlay]
   );
   return (
-    <BottomSheetModal
+    <BottomSheet
       ref={ref}
+      index={-1}
       snapPoints={['75%', '90%']}
       enableDynamicSizing={false}
       enablePanDownToClose
@@ -152,7 +154,7 @@ const FormSheet = React.forwardRef<BottomSheetModal, FormSheetProps>(function Fo
       keyboardBehavior="extend"
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"
-      onDismiss={onDismiss}
+      onClose={onDismiss}
       backdropComponent={renderBackdrop}
       backgroundStyle={[styles.sheetBg, { backgroundColor: colors.card }]}
       handleIndicatorStyle={{ backgroundColor: colors.border }}
@@ -164,7 +166,7 @@ const FormSheet = React.forwardRef<BottomSheetModal, FormSheetProps>(function Fo
         <Text style={[styles.sheetTitle, { color: colors.text }]}>{title}</Text>
         {children}
       </BottomSheetScrollView>
-    </BottomSheetModal>
+    </BottomSheet>
   );
 });
 
@@ -179,13 +181,13 @@ export default function InventoryScreen() {
   // Add form
   const [addForm, setAddForm] = useState<AddForm>({ name: '', price: '', stock: '', threshold: '' });
   const [addErrors, setAddErrors] = useState<AddErrors>({});
-  const addRef = useRef<BottomSheetModal>(null);
+  const addRef = useRef<BottomSheet>(null);
 
   // Edit sheet
   const [editing, setEditing] = useState<Product | null>(null);
   const [editForm, setEditForm] = useState<EditForm>({ name: '', price: '', threshold: '', restock: '' });
   const [editErrors, setEditErrors] = useState<EditErrors>({});
-  const editRef = useRef<BottomSheetModal>(null);
+  const editRef = useRef<BottomSheet>(null);
 
   const load = useCallback(async () => {
     try {
@@ -216,7 +218,7 @@ export default function InventoryScreen() {
   const openAdd = () => {
     setAddForm({ name: '', price: '', stock: '', threshold: '' });
     setAddErrors({});
-    addRef.current?.present();
+    addRef.current?.snapToIndex(0);
   };
 
   const saveAdd = async () => {
@@ -233,7 +235,7 @@ export default function InventoryScreen() {
     if (Object.keys(errors).length > 0 || price === null || stock === null || threshold === null) return;
     try {
       await addProduct(name, price, stock, threshold);
-      addRef.current?.dismiss();
+      addRef.current?.close();
       setToast(`${name} added`);
       load();
     } catch (e) {
@@ -250,7 +252,7 @@ export default function InventoryScreen() {
     });
     setEditErrors({});
     setEditing(product);
-    editRef.current?.present();
+    editRef.current?.snapToIndex(0);
   };
 
   const saveEdit = async () => {
@@ -266,7 +268,7 @@ export default function InventoryScreen() {
     if (Object.keys(errors).length > 0 || price === null || threshold === null) return;
     try {
       await updateProduct(editing.id, { name, price, lowStockThreshold: threshold });
-      editRef.current?.dismiss();
+      editRef.current?.close();
       setToast('Saved');
       load();
     } catch (e) {
@@ -283,7 +285,7 @@ export default function InventoryScreen() {
     }
     try {
       await adjustStock(editing.id, qty);
-      editRef.current?.dismiss();
+      editRef.current?.close();
       setToast(`+${qty} added to ${editing.name}`);
       load();
     } catch (e) {
@@ -305,7 +307,7 @@ export default function InventoryScreen() {
           onPress: async () => {
             try {
               await deactivateProduct(target.id);
-              editRef.current?.dismiss();
+              editRef.current?.close();
               setToast('Product removed');
               load();
             } catch (e) {
