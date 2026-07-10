@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "ShopTally",
+    "slug": "shoptally",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.shoptally.app"
+    },
+    "android": {
+      "package": "com.shoptally.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0B5D3B",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-sqlite",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0B5D3B",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 220,
+          "dark": {
+            "backgroundColor": "#0B5D3B"
+          }
+        }
+      ]
+    ]
+  }
+}
