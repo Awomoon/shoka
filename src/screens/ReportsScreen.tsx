@@ -1,13 +1,15 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, ScrollView, RefreshControl, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, RefreshControl, StyleSheet, useWindowDimensions } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, {
-  FadeInDown,
+  FadeIn,
   LinearTransition,
   useSharedValue,
   useAnimatedStyle,
   withTiming,
+  Easing,
   useReducedMotion,
 } from 'react-native-reanimated';
 import {
@@ -19,13 +21,15 @@ import {
 } from '../db/database';
 import type { Product, SalesSummary, SaleWithItems, TopProduct } from '../db/database';
 import { useTheme } from '../theme/ThemeContext';
-import { spacing, type, radius } from '../theme';
+import { spacing, type, radius, getTypeScale } from '../theme';
 import { formatNaira, formatSaleTime } from '../utils/format';
 import useCountUp from '../utils/useCountUp';
 import PressableScale from '../components/PressableScale';
 import EmptyState from '../components/EmptyState';
 import ScreenHeader from '../components/ScreenHeader';
 import ThemeToggle from '../components/ThemeToggle';
+
+const EASE = Easing.out(Easing.cubic);
 
 interface CardProps {
   children: React.ReactNode;
@@ -38,7 +42,7 @@ function Card({ children, index = 0, style }: CardProps) {
   const reduceMotion = useReducedMotion();
   return (
     <Animated.View
-      entering={reduceMotion ? undefined : FadeInDown.delay(index * 40).duration(250)}
+      entering={reduceMotion ? undefined : FadeIn.delay(index * 40).duration(180)}
       style={[styles.card, { backgroundColor: colors.raised }, elevation, style]}
     >
       {children}
@@ -56,6 +60,8 @@ function SectionLabel({ children, color }: { children: React.ReactNode; color?: 
 export default function ReportsScreen() {
   const { colors, elevation } = useTheme();
   const reduceMotion = useReducedMotion();
+  const { width } = useWindowDimensions();
+  const t = getTypeScale(width);
 
   const [today, setToday] = useState<SalesSummary | null>(null);
   const [week, setWeek] = useState<SalesSummary | null>(null);
@@ -95,7 +101,7 @@ export default function ReportsScreen() {
       setFocusKey((k) => k + 1);
       if (!reduceMotion) {
         heroIn.value = 0;
-        heroIn.value = withTiming(1, { duration: 200 });
+        heroIn.value = withTiming(1, { duration: 200, easing: EASE });
       }
     }, [load, reduceMotion, heroIn])
   );
@@ -122,15 +128,21 @@ export default function ReportsScreen() {
 
   if (loadError) {
     return (
-      <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      <SafeAreaView
+        edges={['top', 'left', 'right']}
+        style={[styles.screen, { backgroundColor: colors.background }]}
+      >
         <ScreenHeader title="Reports" action={<ThemeToggle />} />
         <EmptyState emoji="⚠️" title="Something went wrong" subtitle={loadError} actionLabel="Try again" onAction={load} />
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+    <SafeAreaView
+      edges={['top', 'left', 'right']}
+      style={[styles.screen, { backgroundColor: colors.background }]}
+    >
       <ScreenHeader title="Reports" action={<ThemeToggle />} />
       <ScrollView
         contentContainerStyle={styles.content}
@@ -149,7 +161,12 @@ export default function ReportsScreen() {
           style={[styles.card, styles.heroCard, { backgroundColor: colors.primary }, elevation, heroStyle]}
         >
           <SectionLabel color={colors.onPrimary}>TODAY</SectionLabel>
-          <Text style={[styles.hero, { color: colors.onPrimary }]}>
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.6}
+            style={[styles.hero, { color: colors.onPrimary, fontSize: t.hero }]}
+          >
             {formatNaira(heroRevenue)}
           </Text>
           <View style={styles.statRow}>
@@ -166,7 +183,12 @@ export default function ReportsScreen() {
 
         <Card index={1}>
           <SectionLabel>THIS WEEK</SectionLabel>
-          <Text style={[styles.weekRevenue, { color: colors.text }]}>
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.6}
+            style={[styles.weekRevenue, { color: colors.text, fontSize: t.price }]}
+          >
             {formatNaira(week ? week.revenue : 0)}
           </Text>
           <View style={styles.statRow}>
@@ -278,7 +300,7 @@ export default function ReportsScreen() {
           )}
         </Card>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -306,7 +328,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   hero: {
-    fontSize: type.hero,
     fontWeight: '800',
   },
   heroStatLabel: {
@@ -315,7 +336,6 @@ const styles = StyleSheet.create({
     opacity: 0.75,
   },
   weekRevenue: {
-    fontSize: type.price,
     fontWeight: '800',
   },
   statRow: {
@@ -354,7 +374,7 @@ const styles = StyleSheet.create({
   rank: {
     fontSize: type.body,
     fontWeight: '700',
-    width: 20,
+    minWidth: 20, // aligns ranks without a fixed width that could clip
   },
   topRow: {
     justifyContent: 'center',

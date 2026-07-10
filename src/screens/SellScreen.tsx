@@ -7,39 +7,39 @@ import {
   Alert,
   ActivityIndicator,
   StyleSheet,
+  useWindowDimensions,
 } from 'react-native';
 import type { ListRenderItem } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import BottomSheet, {
   BottomSheetScrollView,
   BottomSheetBackdrop,
   BottomSheetFooter,
-  useBottomSheetSpringConfigs,
+  useBottomSheetTimingConfigs,
 } from '@gorhom/bottom-sheet';
 import type { BottomSheetBackdropProps, BottomSheetFooterProps } from '@gorhom/bottom-sheet';
 import Animated, {
-  FadeInDown,
+  FadeIn,
+  FadeInUp,
   FadeOut,
-  SlideInDown,
-  SlideOutDown,
-  ZoomIn,
+  FadeOutDown,
   LinearTransition,
   interpolateColor,
   useSharedValue,
   useAnimatedStyle,
   withSequence,
-  withSpring,
   withTiming,
+  Easing,
   useReducedMotion,
   ReduceMotion,
 } from 'react-native-reanimated';
 import { listProducts, recordSale } from '../db/database';
 import type { Product } from '../db/database';
 import { useTheme } from '../theme/ThemeContext';
-import { spacing, type, touch, radius } from '../theme';
+import { spacing, type, touch, radius, getTypeScale } from '../theme';
 import { formatNaira } from '../utils/format';
 import PressableScale from '../components/PressableScale';
 import Toast from '../components/Toast';
@@ -50,8 +50,8 @@ import type { RootTabParamList } from '../navigation/types';
 
 // Fat-finger protection: confirm before recording unusually large sales.
 const LARGE_SALE_THRESHOLD = 500000;
-const STAGGER_CAP = 10;
-const POP_SPRING = { damping: 12, stiffness: 400 };
+const STAGGER_CAP = 8;
+const EASE = Easing.out(Easing.cubic);
 
 type SellScreenProps = BottomTabScreenProps<RootTabParamList, 'Sell'>;
 
@@ -70,31 +70,38 @@ interface ProductCardProps {
 function ProductCard({ item, inCart, onAdd, index }: ProductCardProps) {
   const { colors, elevation } = useTheme();
   const reduceMotion = useReducedMotion();
+  const { width } = useWindowDimensions();
+  const t = getTypeScale(width);
   const out = item.stock_qty <= 0;
   const low = !out && item.stock_qty <= item.low_stock_threshold;
 
-  // Tap feedback: 120ms accent border flash, and the qty badge pulses.
+  // Tap feedback: 120ms accent border flash, and the qty badge dips.
   const flash = useSharedValue(0);
   const flashStyle = useAnimatedStyle(() => ({
     borderColor: interpolateColor(flash.value, [0, 1], [colors.border, colors.accent]),
   }));
 
-  const badgeScale = useSharedValue(1);
+  // Opacity dip on increment — no transform, so nothing for the badge's
+  // entering animation to fight.
+  const badgeDip = useSharedValue(1);
   const prevQty = useRef(inCart);
   useEffect(() => {
     if (inCart > prevQty.current && prevQty.current > 0 && !reduceMotion) {
-      badgeScale.value = withSequence(withSpring(1.2, POP_SPRING), withSpring(1, POP_SPRING));
+      badgeDip.value = withSequence(
+        withTiming(0.4, { duration: 75, easing: EASE }),
+        withTiming(1, { duration: 75, easing: EASE })
+      );
     }
     prevQty.current = inCart;
-  }, [inCart, reduceMotion, badgeScale]);
-  const badgeStyle = useAnimatedStyle(() => ({ transform: [{ scale: badgeScale.value }] }));
+  }, [inCart, reduceMotion, badgeDip]);
+  const badgeDipStyle = useAnimatedStyle(() => ({ opacity: badgeDip.value }));
 
   const handlePress = () => {
     const added = onAdd(item);
     if (added && !reduceMotion) {
       flash.value = withSequence(
-        withTiming(1, { duration: 60 }),
-        withTiming(0, { duration: 180 })
+        withTiming(1, { duration: 60, easing: EASE }),
+        withTiming(0, { duration: 180, easing: EASE })
       );
     }
   };
@@ -104,7 +111,7 @@ function ProductCard({ item, inCart, onAdd, index }: ProductCardProps) {
       entering={
         reduceMotion
           ? undefined
-          : FadeInDown.delay(Math.min(index, STAGGER_CAP) * 40).duration(250)
+          : FadeIn.delay(Math.min(index, STAGGER_CAP) * 40).duration(180)
       }
       style={styles.gridItem}
     >
@@ -121,22 +128,21 @@ function ProductCard({ item, inCart, onAdd, index }: ProductCardProps) {
         <Text numberOfLines={2} style={[styles.cardName, { color: colors.text }]}>
           {item.name}
         </Text>
-        <Text style={[styles.cardPrice, { color: colors.primary }]}>
+        <Text style={[styles.cardPrice, { color: colors.primary, fontSize: t.price }]}>
           {formatNaira(item.price)}
         </Text>
         <Text style={[styles.cardStock, { color: out || low ? colors.danger : colors.muted }]}>
           {out ? 'Out of stock' : `${item.stock_qty} left`}
         </Text>
         {inCart > 0 && (
-          // Entering animation and animated transform must live on different
-          // nodes, or the layout animation overwrites the transform (and
-          // Reanimated warns): outer owns entering, inner owns the pulse.
+          // Entering animation and the dip live on different nodes so the
+          // layout animation never overwrites the animated style.
           <Animated.View
-            entering={reduceMotion ? undefined : ZoomIn.springify().damping(12)}
+            entering={reduceMotion ? undefined : FadeIn.duration(150)}
             style={styles.qtyBadgeWrap}
           >
             <Animated.View
-              style={[styles.qtyBadge, { backgroundColor: colors.accent }, badgeStyle]}
+              style={[styles.qtyBadge, { backgroundColor: colors.accent }, badgeDipStyle]}
             >
               <Text style={[styles.qtyBadgeText, { color: colors.onAccent }]}>{inCart}</Text>
             </Animated.View>
@@ -151,6 +157,11 @@ export default function SellScreen({ navigation }: SellScreenProps) {
   const { colors, elevation } = useTheme();
   const reduceMotion = useReducedMotion();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const t = getTypeScale(width);
+
+  // 2 columns on narrow phones, 3 when there's room.
+  const numColumns = width < 400 ? 2 : 3;
 
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -197,32 +208,31 @@ export default function SellScreen({ navigation }: SellScreenProps) {
   const cartCount = cartLines.reduce((sum, l) => sum + l.qty, 0);
   const cartTotal = cartLines.reduce((sum, l) => sum + l.qty * l.product.price, 0);
 
-  // Total "pulses" each time an item lands in the cart — except the very
-  // first add: the bar is mid-entering then, and a simultaneous transform
-  // gets overwritten by the layout animation, freezing the text mid-scale.
-  const pulse = useSharedValue(1);
+  // The total dips (1 → 0.4 → 1 opacity, 150ms) as the number updates —
+  // subtle, no transform, nothing for layout animations to overwrite.
+  // Skipped on the first add: the bar is fading in then anyway.
+  const totalDip = useSharedValue(1);
   const prevTotal = useRef(0);
   useEffect(() => {
-    if (cartTotal > prevTotal.current && prevTotal.current > 0 && !reduceMotion) {
-      pulse.value = withSequence(
-        withTiming(1.15, { duration: 100 }),
-        withTiming(1, { duration: 130 })
+    if (cartTotal !== prevTotal.current && prevTotal.current > 0 && !reduceMotion) {
+      totalDip.value = withSequence(
+        withTiming(0.4, { duration: 75, easing: EASE }),
+        withTiming(1, { duration: 75, easing: EASE })
       );
     }
     prevTotal.current = cartTotal;
-  }, [cartTotal, reduceMotion, pulse]);
-  const pulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
+  }, [cartTotal, reduceMotion, totalDip]);
+  const totalDipStyle = useAnimatedStyle(() => ({ opacity: totalDip.value }));
 
   // If the cart empties from inside the sheet, the sheet has nothing to show.
   useEffect(() => {
     if (cartLines.length === 0) sheetRef.current?.close();
   }, [cartLines.length]);
 
-  // Snappy sheet physics: high damping so it settles without wobbling.
-  const sheetAnimation = useBottomSheetSpringConfigs({
-    damping: 30,
-    stiffness: 400,
-    mass: 1,
+  // Smooth timing sheet — same cubic ease as everything else, no spring.
+  const sheetAnimation = useBottomSheetTimingConfigs({
+    duration: 250,
+    easing: EASE,
   });
 
   const addToCart = (product: Product): boolean => {
@@ -312,7 +322,12 @@ export default function SellScreen({ navigation }: SellScreenProps) {
             {submitting ? (
               <ActivityIndicator color={colors.onPrimary} />
             ) : (
-              <Text style={[styles.completeBtnText, { color: colors.onPrimary }]}>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+                style={[styles.completeBtnText, { color: colors.onPrimary }]}
+              >
                 Complete Sale — {formatNaira(cartTotal)}
               </Text>
             )}
@@ -330,7 +345,10 @@ export default function SellScreen({ navigation }: SellScreenProps) {
 
   if (!loading && products.length === 0 && !loadError) {
     return (
-      <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      <SafeAreaView
+        edges={['top', 'left', 'right']}
+        style={[styles.screen, { backgroundColor: colors.background }]}
+      >
         <GreetingHeader />
         <EmptyState
           emoji="🏪"
@@ -339,12 +357,15 @@ export default function SellScreen({ navigation }: SellScreenProps) {
           actionLabel="Add your first product"
           onAction={() => navigation.navigate('Stock')}
         />
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+    <SafeAreaView
+      edges={['top', 'left', 'right']}
+      style={[styles.screen, { backgroundColor: colors.background }]}
+    >
       <GreetingHeader />
       <View style={styles.searchWrap}>
         <View style={[styles.searchPill, { backgroundColor: colors.raised }, elevation]}>
@@ -364,10 +385,11 @@ export default function SellScreen({ navigation }: SellScreenProps) {
         <EmptyState emoji="⚠️" title="Something went wrong" subtitle={loadError} actionLabel="Try again" onAction={load} />
       ) : (
         <FlatList
+          key={String(numColumns)} // numColumns can't change in place
           data={filtered}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderProduct}
-          numColumns={2}
+          numColumns={numColumns}
           columnWrapperStyle={styles.gridRow}
           contentContainerStyle={styles.gridContent}
           keyboardShouldPersistTaps="handled"
@@ -381,8 +403,8 @@ export default function SellScreen({ navigation }: SellScreenProps) {
 
       {cartCount > 0 && (
         <Animated.View
-          entering={reduceMotion ? undefined : SlideInDown.springify().damping(18)}
-          exiting={reduceMotion ? undefined : SlideOutDown.duration(200)}
+          entering={reduceMotion ? undefined : FadeInUp.duration(220).easing(EASE)}
+          exiting={reduceMotion ? undefined : FadeOutDown.duration(200).easing(EASE)}
           style={styles.cartBarWrap}
         >
           <PressableScale
@@ -390,13 +412,21 @@ export default function SellScreen({ navigation }: SellScreenProps) {
             scaleTo={0.98}
             style={[styles.cartBar, { backgroundColor: colors.primary }]}
           >
-            <Text style={[styles.cartBarCount, { color: colors.onPrimary }]}>
+            <Text
+              numberOfLines={1}
+              style={[styles.cartBarCount, { color: colors.onPrimary }]}
+            >
               {cartCount} {cartCount === 1 ? 'item' : 'items'} ▸
             </Text>
-            {/* Pulse the wrapper, not the Text: Animated.Text doesn't re-measure
+            {/* Dip the wrapper, not the Text: Animated.Text doesn't re-measure
                 when the amount grows a digit, which clips the last character. */}
-            <Animated.View style={[styles.totalWrap, pulseStyle]}>
-              <Text style={[styles.cartBarTotal, { color: colors.accent }]}>
+            <Animated.View style={[styles.totalWrap, totalDipStyle]}>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+                style={[styles.cartBarTotal, { color: colors.accent, fontSize: t.price }]}
+              >
                 {formatNaira(cartTotal)}
               </Text>
             </Animated.View>
@@ -477,7 +507,12 @@ export default function SellScreen({ navigation }: SellScreenProps) {
           })}
           <View style={styles.sheetTotalRow}>
             <Text style={[styles.sheetTotalLabel, { color: colors.muted }]}>Total</Text>
-            <Text style={[styles.sheetTotalValue, { color: colors.text }]}>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.6}
+              style={[styles.sheetTotalValue, { color: colors.text, fontSize: t.hero }]}
+            >
               {formatNaira(cartTotal)}
             </Text>
           </View>
@@ -486,7 +521,7 @@ export default function SellScreen({ navigation }: SellScreenProps) {
 
       {toast && <Toast message={toast} onHide={() => setToast(null)} />}
       {success && <SuccessOverlay message={success} onDone={() => setSuccess(null)} />}
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -528,7 +563,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   card: {
-    minHeight: touch.minTarget + 44,
+    minHeight: touch.minTarget, // grows with content, never fixed
     borderRadius: radius.lg,
     borderWidth: 1,
     padding: spacing.lg,
@@ -541,7 +576,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   cardPrice: {
-    fontSize: type.price,
     fontWeight: '800',
     marginTop: spacing.xs,
   },
@@ -584,18 +618,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     elevation: 6,
   },
   cartBarCount: {
+    flex: 1, // count takes leftover space; the amount is never squeezed off
     fontSize: type.body,
     fontWeight: '700',
   },
   totalWrap: {
-    flexShrink: 0, // the amount never gives up width — clipping money is worse than wrapping the label
+    flexShrink: 1, // may shrink — adjustsFontSizeToFit scales the text down instead of clipping
+    marginLeft: spacing.sm,
   },
   cartBarTotal: {
-    fontSize: type.price,
     fontWeight: '800',
   },
   sheetBg: {
@@ -674,6 +708,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
+    gap: spacing.md,
     paddingVertical: spacing.lg,
   },
   sheetTotalLabel: {
@@ -681,7 +716,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   sheetTotalValue: {
-    fontSize: type.hero,
+    flexShrink: 1,
     fontWeight: '800',
   },
   footerWrap: {
@@ -690,6 +725,7 @@ const styles = StyleSheet.create({
   completeBtn: {
     height: touch.button,
     borderRadius: radius.lg,
+    paddingHorizontal: spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',
   },

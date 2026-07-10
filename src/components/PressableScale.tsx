@@ -4,11 +4,12 @@ import type { Insets } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withSpring,
+  withTiming,
+  Easing,
   useReducedMotion,
 } from 'react-native-reanimated';
 
-const SPRING = { damping: 20, stiffness: 400 };
+const EASE = Easing.out(Easing.cubic);
 
 // Style prop of Animated.View — accepts plain styles, animated styles, and
 // nested arrays of either, which is exactly what callers pass in.
@@ -24,14 +25,15 @@ interface PressableScaleProps {
   hitSlop?: number | Insets;
 }
 
-// Shared press feedback: scales to 0.96 with a spring. Under 300ms, never blocks.
+// Shared press feedback: smooth timing scale — 100ms down, 150ms back.
+// No springs anywhere in the app; nothing overshoots or bounces.
 export default function PressableScale({
   onPress,
   onLongPress,
   disabled,
   style,
   children,
-  scaleTo = 0.96,
+  scaleTo = 0.97,
   hitSlop,
 }: PressableScaleProps) {
   const reduceMotion = useReducedMotion();
@@ -47,10 +49,10 @@ export default function PressableScale({
       disabled={disabled}
       hitSlop={hitSlop}
       onPressIn={() => {
-        if (!reduceMotion) scale.value = withSpring(scaleTo, SPRING);
+        if (!reduceMotion) scale.value = withTiming(scaleTo, { duration: 100, easing: EASE });
       }}
       onPressOut={() => {
-        if (!reduceMotion) scale.value = withSpring(1, SPRING);
+        if (!reduceMotion) scale.value = withTiming(1, { duration: 150, easing: EASE });
       }}
     >
       <Animated.View style={[style, animatedStyle]}>{children}</Animated.View>

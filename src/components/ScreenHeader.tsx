@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, type } from '../theme';
 import { getGreeting, formatTodayLong } from '../utils/format';
@@ -12,11 +11,11 @@ interface ScreenHeaderProps {
 
 // Replaces the stock navigation header: screen title on the left,
 // contextual action (theme toggle, "+ Add") on the right.
+// Screens wrap themselves in SafeAreaView, so no inset handling here.
 export default function ScreenHeader({ title, action }: ScreenHeaderProps) {
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.bar, { paddingTop: insets.top + spacing.md }]}>
+    <View style={styles.bar}>
       <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
       {action ? <View style={styles.action}>{action}</View> : null}
     </View>
@@ -26,9 +25,8 @@ export default function ScreenHeader({ title, action }: ScreenHeaderProps) {
 // The Sell header is a slim greeting row — the products are the stars.
 export function GreetingHeader() {
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.bar, { paddingTop: insets.top + spacing.md }]}>
+    <View style={styles.bar}>
       <View>
         <Text style={[styles.greeting, { color: colors.text }]}>{getGreeting()}</Text>
         <Text style={[styles.date, { color: colors.muted }]}>{formatTodayLong()}</Text>
@@ -43,6 +41,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
     paddingBottom: spacing.sm,
   },
   title: {

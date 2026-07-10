@@ -11,6 +11,7 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
+  Easing,
   useReducedMotion,
 } from 'react-native-reanimated';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
@@ -53,7 +54,7 @@ function ThemedApp() {
     }
     if (reduceMotion) return;
     opacity.value = 0.4;
-    opacity.value = withTiming(1, { duration: 200 });
+    opacity.value = withTiming(1, { duration: 200, easing: Easing.out(Easing.cubic) });
   }, [resolved, reduceMotion, opacity]);
   const fadeStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
 

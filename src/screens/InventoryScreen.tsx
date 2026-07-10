@@ -8,19 +8,21 @@ import {
 } from 'react-native';
 import type { KeyboardTypeOptions, ListRenderItem } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet, {
   BottomSheetScrollView,
   BottomSheetBackdrop,
   BottomSheetTextInput,
+  useBottomSheetTimingConfigs,
 } from '@gorhom/bottom-sheet';
 import type { BottomSheetBackdropProps } from '@gorhom/bottom-sheet';
 import Animated, {
-  FadeInDown,
+  FadeIn,
   LinearTransition,
   useSharedValue,
   useAnimatedStyle,
   withTiming,
+  Easing,
   useReducedMotion,
   ReduceMotion,
 } from 'react-native-reanimated';
@@ -40,7 +42,8 @@ import Toast from '../components/Toast';
 import EmptyState from '../components/EmptyState';
 import ScreenHeader from '../components/ScreenHeader';
 
-const STAGGER_CAP = 10;
+const STAGGER_CAP = 8;
+const EASE = Easing.out(Easing.cubic);
 
 interface AddForm {
   name: string;
@@ -129,6 +132,8 @@ const FormSheet = React.forwardRef<BottomSheet, FormSheetProps>(function FormShe
 ) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  // Smooth timing sheet — same cubic ease as everything else, no spring.
+  const sheetAnimation = useBottomSheetTimingConfigs({ duration: 250, easing: EASE });
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
       <BottomSheetBackdrop
@@ -148,6 +153,7 @@ const FormSheet = React.forwardRef<BottomSheet, FormSheetProps>(function FormShe
       snapPoints={['75%', '90%']}
       enableDynamicSizing={false}
       enablePanDownToClose
+      animationConfigs={sheetAnimation}
       // Sheets must open even when the phone has system animations off
       // (reduced motion) — otherwise they stay stuck off-screen.
       overrideReduceMotion={ReduceMotion.Never}
@@ -324,7 +330,7 @@ export default function InventoryScreen() {
       entering={
         reduceMotion
           ? undefined
-          : FadeInDown.delay(Math.min(index, STAGGER_CAP) * 40).duration(250)
+          : FadeIn.delay(Math.min(index, STAGGER_CAP) * 40).duration(180)
       }
       layout={reduceMotion ? undefined : LinearTransition.duration(200)}
     >
@@ -355,7 +361,10 @@ export default function InventoryScreen() {
   );
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+    <SafeAreaView
+      edges={['top', 'left', 'right']}
+      style={[styles.screen, { backgroundColor: colors.background }]}
+    >
       <ScreenHeader title="Stock" action={addAction} />
 
       {!loading && products.length === 0 ? (
@@ -483,7 +492,7 @@ export default function InventoryScreen() {
       </FormSheet>
 
       {toast && <Toast message={toast} onHide={() => setToast(null)} bottom={24} />}
-    </View>
+    </SafeAreaView>
   );
 }
 

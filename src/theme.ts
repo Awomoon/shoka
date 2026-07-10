@@ -113,6 +113,18 @@ export const type = {
   small: 12,
 } as const;
 
+export type TypeScale = { [K in keyof typeof type]: number };
+
+// Screens under 360dp step the hero numbers down one size so long naira
+// amounts fit without clipping. All width-based font math lives here —
+// components pass useWindowDimensions().width, nothing else.
+const SMALL_WIDTH = 360;
+
+export function getTypeScale(width: number): TypeScale {
+  if (width >= SMALL_WIDTH) return type;
+  return { ...type, hero: 28, price: 22 };
+}
+
 export const touch = {
   minTarget: 56,
   button: 64,
