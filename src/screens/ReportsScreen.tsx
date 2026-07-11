@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, ScrollView, RefreshControl, Alert, StyleSheet, useWindowDimensions } from 'react-native';
+import { View, Text, ScrollView, RefreshControl, Alert, Share, StyleSheet, useWindowDimensions } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -25,7 +25,7 @@ import {
 import type { Product, SalesSummary, SaleWithItems, TopProduct } from '../db/database';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, type, radius, getTypeScale } from '../theme';
-import { formatNaira, formatSaleTime } from '../utils/format';
+import { formatNaira, formatSaleTime, formatTodayLong } from '../utils/format';
 import useCountUp from '../utils/useCountUp';
 import PressableScale from '../components/PressableScale';
 import Toast from '../components/Toast';
@@ -143,6 +143,35 @@ export default function ReportsScreen() {
     setRefreshing(false);
   };
 
+  // Plain-text daily summary for WhatsApp — fresh numbers fetched at tap
+  // time, voided sales already excluded by the queries. Works honestly on a
+  // zero-sale day too.
+  const shareSummary = async () => {
+    try {
+      const [shopName, t, topToday, lowNow] = await Promise.all([
+        getSetting('shopName'),
+        getTodaySummary(),
+        getTopProducts(1),
+        getLowStockProducts(),
+      ]);
+      const topLine = topToday.length > 0 ? `${topToday[0].name} ×${topToday[0].qtySold}` : '—';
+      const lowLine = lowNow.length > 0 ? lowNow.map((p) => p.name).join(', ') : 'None';
+      const message = [
+        `📊 ${shopName || 'ShopTally'} — Daily Summary`,
+        `${formatTodayLong()} ${new Date().getFullYear()}`,
+        `💰 Sales: ${formatNaira(t.revenue)}`,
+        `🧾 Transactions: ${t.salesCount}`,
+        `📦 Items sold: ${t.itemsSold}`,
+        `🔝 Top item: ${topLine}`,
+        `⚠️ Low stock: ${lowLine}`,
+        '— via ShopTally by Moontech',
+      ].join('\n');
+      await Share.share({ message });
+    } catch (e) {
+      Alert.alert("Couldn't share", 'The summary could not be shared. Please try again.');
+    }
+  };
+
   // Mistakes happen at the counter: void puts the items back in stock and
   // takes the sale out of every total, but keeps it visible in history.
   const confirmVoid = (sale: SaleWithItems) => {
@@ -251,6 +280,15 @@ export default function ReportsScreen() {
             </Text>
           </View>
         </Animated.View>
+
+        <PressableScale
+          onPress={shareSummary}
+          style={[styles.shareBtn, { backgroundColor: colors.raised }, elevation]}
+        >
+          <Text style={[styles.shareBtnText, { color: colors.primary }]}>
+            📤 Share today's summary
+          </Text>
+        </PressableScale>
 
         <Card index={1}>
           <SectionLabel>THIS WEEK</SectionLabel>
@@ -489,6 +527,16 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
+  },
+  shareBtn: {
+    minHeight: 56,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shareBtnText: {
+    fontSize: type.body,
+    fontWeight: '700',
   },
   backupBannerText: {
     fontSize: type.label,
