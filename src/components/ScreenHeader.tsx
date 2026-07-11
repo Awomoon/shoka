@@ -23,12 +23,15 @@ export default function ScreenHeader({ title, action }: ScreenHeaderProps) {
 }
 
 // The Sell header is a slim greeting row — the products are the stars.
-export function GreetingHeader() {
+// Once a shop name is set in Settings, it replaces the generic greeting.
+export function GreetingHeader({ shopName }: { shopName?: string | null }) {
   const { colors } = useTheme();
   return (
     <View style={styles.bar}>
       <View>
-        <Text style={[styles.greeting, { color: colors.text }]}>{getGreeting()}</Text>
+        <Text numberOfLines={1} style={[styles.greeting, { color: colors.text }]}>
+          {shopName || getGreeting()}
+        </Text>
         <Text style={[styles.date, { color: colors.muted }]}>{formatTodayLong()}</Text>
       </View>
     </View>

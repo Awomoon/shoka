@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Text, View, StyleSheet } from 'react-native';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
@@ -19,11 +20,13 @@ import { type } from './src/theme';
 import SellScreen from './src/screens/SellScreen';
 import InventoryScreen from './src/screens/InventoryScreen';
 import ReportsScreen from './src/screens/ReportsScreen';
-import type { RootTabParamList } from './src/navigation/types';
+import SettingsScreen from './src/screens/SettingsScreen';
+import type { RootTabParamList, RootStackParamList } from './src/navigation/types';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
 function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
   const { colors } = useTheme();
@@ -37,6 +40,43 @@ function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
         ]}
       />
     </View>
+  );
+}
+
+function Tabs() {
+  const { colors } = useTheme();
+  const reduceMotion = useReducedMotion();
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        // Screens render their own headers (ScreenHeader / GreetingHeader).
+        headerShown: false,
+        // Quick fade between tabs — slides feel slow when switching often.
+        animation: reduceMotion ? 'none' : 'fade',
+        transitionSpec: { animation: 'timing', config: { duration: 150 } },
+        tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border },
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.muted,
+        tabBarLabelStyle: { fontSize: type.label, fontWeight: '600' },
+        tabBarItemStyle: { paddingVertical: 4 },
+      }}
+    >
+      <Tab.Screen
+        name="Sell"
+        component={SellScreen}
+        options={{ tabBarIcon: ({ focused }) => <TabIcon emoji="🛒" focused={focused} /> }}
+      />
+      <Tab.Screen
+        name="Stock"
+        component={InventoryScreen}
+        options={{ tabBarIcon: ({ focused }) => <TabIcon emoji="📦" focused={focused} /> }}
+      />
+      <Tab.Screen
+        name="Reports"
+        component={ReportsScreen}
+        options={{ tabBarIcon: ({ focused }) => <TabIcon emoji="📊" focused={focused} /> }}
+      />
+    </Tab.Navigator>
   );
 }
 
@@ -84,36 +124,10 @@ function ThemedApp() {
   return (
     <Animated.View style={[{ flex: 1, backgroundColor: colors.background }, fadeStyle]}>
       <NavigationContainer theme={navTheme}>
-        <Tab.Navigator
-          screenOptions={{
-            // Screens render their own headers (ScreenHeader / GreetingHeader).
-            headerShown: false,
-            // Quick fade between tabs — slides feel slow when switching often.
-            animation: reduceMotion ? 'none' : 'fade',
-            transitionSpec: { animation: 'timing', config: { duration: 150 } },
-            tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border },
-            tabBarActiveTintColor: colors.primary,
-            tabBarInactiveTintColor: colors.muted,
-            tabBarLabelStyle: { fontSize: type.label, fontWeight: '600' },
-            tabBarItemStyle: { paddingVertical: 4 },
-          }}
-        >
-          <Tab.Screen
-            name="Sell"
-            component={SellScreen}
-            options={{ tabBarIcon: ({ focused }) => <TabIcon emoji="🛒" focused={focused} /> }}
-          />
-          <Tab.Screen
-            name="Stock"
-            component={InventoryScreen}
-            options={{ tabBarIcon: ({ focused }) => <TabIcon emoji="📦" focused={focused} /> }}
-          />
-          <Tab.Screen
-            name="Reports"
-            component={ReportsScreen}
-            options={{ tabBarIcon: ({ focused }) => <TabIcon emoji="📊" focused={focused} /> }}
-          />
-        </Tab.Navigator>
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="Tabs" component={Tabs} />
+          <Stack.Screen name="Settings" component={SettingsScreen} />
+        </Stack.Navigator>
       </NavigationContainer>
       <StatusBar style={resolved === 'dark' ? 'light' : 'dark'} />
     </Animated.View>

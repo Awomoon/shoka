@@ -36,7 +36,7 @@ import Animated, {
   useReducedMotion,
   ReduceMotion,
 } from 'react-native-reanimated';
-import { listProducts, recordSale } from '../db/database';
+import { listProducts, recordSale, getSetting } from '../db/database';
 import type { Product } from '../db/database';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, type, touch, radius, getTypeScale } from '../theme';
@@ -171,6 +171,7 @@ export default function SellScreen({ navigation }: SellScreenProps) {
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [shopName, setShopName] = useState<string | null>(null);
 
   const sheetRef = useRef<BottomSheet>(null);
 
@@ -184,6 +185,9 @@ export default function SellScreen({ navigation }: SellScreenProps) {
     } finally {
       setLoading(false);
     }
+    getSetting('shopName')
+      .then(setShopName)
+      .catch(() => {});
   }, []);
 
   useFocusEffect(
@@ -349,7 +353,7 @@ export default function SellScreen({ navigation }: SellScreenProps) {
         edges={['top', 'left', 'right']}
         style={[styles.screen, { backgroundColor: colors.background }]}
       >
-        <GreetingHeader />
+        <GreetingHeader shopName={shopName} />
         <EmptyState
           emoji="🏪"
           title="No products yet"
@@ -366,7 +370,7 @@ export default function SellScreen({ navigation }: SellScreenProps) {
       edges={['top', 'left', 'right']}
       style={[styles.screen, { backgroundColor: colors.background }]}
     >
-      <GreetingHeader />
+      <GreetingHeader shopName={shopName} />
       <View style={styles.searchWrap}>
         <View style={[styles.searchPill, { backgroundColor: colors.raised }, elevation]}>
           <Text style={styles.searchIcon}>🔍</Text>

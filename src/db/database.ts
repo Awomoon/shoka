@@ -90,8 +90,39 @@ async function init(): Promise<SQLite.SQLiteDatabase> {
       unit_price INTEGER NOT NULL,
       qty INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY NOT NULL,
+      value TEXT NOT NULL
+    );
   `);
   return db;
+}
+
+// --- Settings (key-value) ---
+
+export type SettingKey = 'shopName' | 'lastBackupAt';
+
+export interface SettingRow {
+  key: string;
+  value: string;
+}
+
+export async function getSetting(key: SettingKey): Promise<string | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<SettingRow>(
+    'SELECT key, value FROM settings WHERE key = ?',
+    [key]
+  );
+  return row ? row.value : null;
+}
+
+export async function setSetting(key: SettingKey, value: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+    [key, value]
+  );
 }
 
 export function getDb(): Promise<SQLite.SQLiteDatabase> {

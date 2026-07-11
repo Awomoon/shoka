@@ -34,7 +34,8 @@
             "backgroundColor": "#0B5D3B"
           }
         }
-      ]
+      ],
+      "expo-sharing"
     ]
   }
 }

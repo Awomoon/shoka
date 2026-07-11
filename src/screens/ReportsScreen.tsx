@@ -1,7 +1,8 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, RefreshControl, StyleSheet, useWindowDimensions } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, {
   FadeIn,
@@ -27,7 +28,7 @@ import useCountUp from '../utils/useCountUp';
 import PressableScale from '../components/PressableScale';
 import EmptyState from '../components/EmptyState';
 import ScreenHeader from '../components/ScreenHeader';
-import ThemeToggle from '../components/ThemeToggle';
+import type { RootStackParamList } from '../navigation/types';
 
 const EASE = Easing.out(Easing.cubic);
 
@@ -62,6 +63,17 @@ export default function ReportsScreen() {
   const reduceMotion = useReducedMotion();
   const { width } = useWindowDimensions();
   const t = getTypeScale(width);
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+
+  const settingsAction = (
+    <PressableScale
+      onPress={() => navigation.navigate('Settings')}
+      style={styles.gearBtn}
+      hitSlop={8}
+    >
+      <Text style={styles.gearIcon}>⚙️</Text>
+    </PressableScale>
+  );
 
   const [today, setToday] = useState<SalesSummary | null>(null);
   const [week, setWeek] = useState<SalesSummary | null>(null);
@@ -132,7 +144,7 @@ export default function ReportsScreen() {
         edges={['top', 'left', 'right']}
         style={[styles.screen, { backgroundColor: colors.background }]}
       >
-        <ScreenHeader title="Reports" action={<ThemeToggle />} />
+        <ScreenHeader title="Reports" action={settingsAction} />
         <EmptyState emoji="⚠️" title="Something went wrong" subtitle={loadError} actionLabel="Try again" onAction={load} />
       </SafeAreaView>
     );
@@ -143,7 +155,7 @@ export default function ReportsScreen() {
       edges={['top', 'left', 'right']}
       style={[styles.screen, { backgroundColor: colors.background }]}
     >
-      <ScreenHeader title="Reports" action={<ThemeToggle />} />
+      <ScreenHeader title="Reports" action={settingsAction} />
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={
@@ -375,6 +387,15 @@ const styles = StyleSheet.create({
     fontSize: type.body,
     fontWeight: '700',
     minWidth: 20, // aligns ranks without a fixed width that could clip
+  },
+  gearBtn: {
+    minHeight: 44,
+    minWidth: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gearIcon: {
+    fontSize: 20,
   },
   topRow: {
     justifyContent: 'center',
