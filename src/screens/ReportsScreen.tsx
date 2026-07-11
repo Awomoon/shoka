@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, ScrollView, RefreshControl, StyleSheet, useWindowDimensions } from 'react-native';
+import { View, Text, ScrollView, RefreshControl, Alert, StyleSheet, useWindowDimensions } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -20,6 +20,7 @@ import {
   getRecentSales,
   getLowStockProducts,
   getSetting,
+  voidSale,
 } from '../db/database';
 import type { Product, SalesSummary, SaleWithItems, TopProduct } from '../db/database';
 import { useTheme } from '../theme/ThemeContext';
@@ -27,6 +28,7 @@ import { spacing, type, radius, getTypeScale } from '../theme';
 import { formatNaira, formatSaleTime } from '../utils/format';
 import useCountUp from '../utils/useCountUp';
 import PressableScale from '../components/PressableScale';
+import Toast from '../components/Toast';
 import EmptyState from '../components/EmptyState';
 import ScreenHeader from '../components/ScreenHeader';
 import type { RootStackParamList } from '../navigation/types';
@@ -86,6 +88,7 @@ export default function ReportsScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [focusKey, setFocusKey] = useState(0);
   const [lastBackupAt, setLastBackupAt] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -138,6 +141,35 @@ export default function ReportsScreen() {
     setRefreshing(true);
     await load();
     setRefreshing(false);
+  };
+
+  // Mistakes happen at the counter: void puts the items back in stock and
+  // takes the sale out of every total, but keeps it visible in history.
+  const confirmVoid = (sale: SaleWithItems) => {
+    Alert.alert(
+      'Void this sale?',
+      `${formatNaira(sale.total)} comes out of your figures and the items go back into stock. The sale stays in the list, marked VOIDED.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Void sale',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await voidSale(sale.id);
+              setToast('Sale voided — stock restored');
+              load();
+            } catch (e) {
+              Alert.alert(
+                'Not voided',
+                e instanceof Error && e.message ? e.message : 'The sale could not be voided. Please try again.'
+              );
+              load();
+            }
+          },
+        },
+      ]
+    );
   };
 
   // One hero animation for the screen: today's revenue counts up.
@@ -300,45 +332,74 @@ export default function ReportsScreen() {
               Sales you record will show here.
             </Text>
           ) : (
-            recent.map((sale) => (
-              <Animated.View
-                key={sale.id}
-                layout={reduceMotion ? undefined : LinearTransition.duration(200)}
-                style={[styles.saleWrap, { borderBottomColor: colors.border }]}
-              >
-                <PressableScale
-                  onPress={() => setExpanded(expanded === sale.id ? null : sale.id)}
-                  scaleTo={0.98}
-                  style={styles.saleRow}
+            recent.map((sale) => {
+              const voided = sale.voided_at !== null;
+              return (
+                <Animated.View
+                  key={sale.id}
+                  layout={reduceMotion ? undefined : LinearTransition.duration(200)}
+                  style={[styles.saleWrap, { borderBottomColor: colors.border }]}
                 >
-                  <View style={styles.saleInfo}>
-                    <Text style={[styles.saleTime, { color: colors.muted }]}>
-                      {formatSaleTime(sale.created_at)}
-                    </Text>
-                    <Text style={[styles.saleTotal, { color: colors.text }]}>
-                      {formatNaira(sale.total)}
-                    </Text>
-                  </View>
-                  <Text style={[styles.chevron, { color: colors.muted }]}>
-                    {expanded === sale.id ? '▴' : '▾'}
-                  </Text>
-                </PressableScale>
-                {expanded === sale.id &&
-                  sale.items.map((it) => (
-                    <View key={it.id} style={styles.saleItemRow}>
-                      <Text numberOfLines={1} style={[styles.saleItemName, { color: colors.muted }]}>
-                        {it.qty} × {it.product_name}
+                  <PressableScale
+                    onPress={() => setExpanded(expanded === sale.id ? null : sale.id)}
+                    scaleTo={0.98}
+                    style={styles.saleRow}
+                  >
+                    <View style={[styles.saleInfo, voided && styles.voidedDim]}>
+                      <Text style={[styles.saleTime, { color: colors.muted }]}>
+                        {formatSaleTime(sale.created_at)}
                       </Text>
-                      <Text style={[styles.saleItemValue, { color: colors.muted }]}>
-                        {formatNaira(it.qty * it.unit_price)}
-                      </Text>
+                      <View style={styles.saleTotalRow}>
+                        <Text
+                          style={[
+                            styles.saleTotal,
+                            { color: colors.text },
+                            voided && styles.voidedTotal,
+                          ]}
+                        >
+                          {formatNaira(sale.total)}
+                        </Text>
+                        {voided && (
+                          <View style={[styles.voidedChip, { backgroundColor: colors.subtle }]}>
+                            <Text style={[styles.voidedChipText, { color: colors.muted }]}>
+                              VOIDED
+                            </Text>
+                          </View>
+                        )}
+                      </View>
                     </View>
-                  ))}
-              </Animated.View>
-            ))
+                    <Text style={[styles.chevron, { color: colors.muted }]}>
+                      {expanded === sale.id ? '▴' : '▾'}
+                    </Text>
+                  </PressableScale>
+                  {expanded === sale.id && (
+                    <View style={voided ? styles.voidedDim : null}>
+                      {sale.items.map((it) => (
+                        <View key={it.id} style={styles.saleItemRow}>
+                          <Text numberOfLines={1} style={[styles.saleItemName, { color: colors.muted }]}>
+                            {it.qty} × {it.product_name}
+                          </Text>
+                          <Text style={[styles.saleItemValue, { color: colors.muted }]}>
+                            {formatNaira(it.qty * it.unit_price)}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  {expanded === sale.id && !voided && (
+                    <PressableScale onPress={() => confirmVoid(sale)} style={styles.voidBtn}>
+                      <Text style={[styles.voidBtnText, { color: colors.danger }]}>
+                        Void this sale
+                      </Text>
+                    </PressableScale>
+                  )}
+                </Animated.View>
+              );
+            })
           )}
         </Card>
       </ScrollView>
+      {toast && <Toast message={toast} onHide={() => setToast(null)} bottom={24} />}
     </SafeAreaView>
   );
 }
@@ -480,6 +541,37 @@ const styles = StyleSheet.create({
     fontSize: type.title,
     fontWeight: '800',
     marginTop: 2,
+  },
+  saleTotalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  voidedDim: {
+    opacity: 0.5,
+  },
+  voidedTotal: {
+    textDecorationLine: 'line-through',
+  },
+  voidedChip: {
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+  },
+  voidedChipText: {
+    fontSize: type.small,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  voidBtn: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingLeft: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  voidBtnText: {
+    fontSize: type.label,
+    fontWeight: '700',
   },
   chevron: {
     fontSize: type.title,

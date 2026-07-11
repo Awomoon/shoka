@@ -17,6 +17,7 @@ export interface Sale {
   id: number;
   total: number;
   created_at: string;
+  voided_at: string | null; // set = sale was voided; excluded from all totals
 }
 
 export interface SaleItem {
@@ -96,7 +97,17 @@ async function init(): Promise<SQLite.SQLiteDatabase> {
       value TEXT NOT NULL
     );
   `);
+  await migrate(db);
   return db;
+}
+
+// Additive migrations that must run safely on databases created by older
+// versions: check before ALTER, never destructive.
+async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
+  const salesColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(sales)');
+  if (!salesColumns.some((c) => c.name === 'voided_at')) {
+    await db.execAsync('ALTER TABLE sales ADD COLUMN voided_at TEXT NULL');
+  }
 }
 
 // --- Settings (key-value) ---
@@ -236,6 +247,33 @@ export async function recordSale(
   return { saleId, total };
 }
 
+// Voids a sale: marks it and puts every line item's quantity back in stock,
+// all in one transaction. The sale stays in history, greyed out, and every
+// summary query ignores it.
+export async function voidSale(saleId: number): Promise<void> {
+  const db = await getDb();
+  await db.withTransactionAsync(async () => {
+    const sale = await db.getFirstAsync<Sale>('SELECT * FROM sales WHERE id = ?', [saleId]);
+    if (!sale) throw new Error('This sale no longer exists.');
+    if (sale.voided_at) throw new Error('This sale is already voided.');
+
+    await db.runAsync(
+      "UPDATE sales SET voided_at = datetime('now','localtime') WHERE id = ?",
+      [saleId]
+    );
+    const items = await db.getAllAsync<SaleItem>(
+      'SELECT * FROM sale_items WHERE sale_id = ?',
+      [saleId]
+    );
+    for (const item of items) {
+      await db.runAsync(
+        'UPDATE products SET stock_qty = stock_qty + ? WHERE id = ?',
+        [item.qty, item.product_id]
+      );
+    }
+  });
+}
+
 interface MoneyRow {
   salesCount: number;
   revenue: number;
@@ -249,12 +287,12 @@ export async function getTodaySummary(): Promise<SalesSummary> {
   const db = await getDb();
   const money = await db.getFirstAsync<MoneyRow>(
     `SELECT COUNT(*) AS salesCount, COALESCE(SUM(total), 0) AS revenue
-     FROM sales WHERE date(created_at) = date('now','localtime')`
+     FROM sales WHERE date(created_at) = date('now','localtime') AND voided_at IS NULL`
   );
   const items = await db.getFirstAsync<ItemsRow>(
     `SELECT COALESCE(SUM(si.qty), 0) AS itemsSold
      FROM sale_items si JOIN sales s ON s.id = si.sale_id
-     WHERE date(s.created_at) = date('now','localtime')`
+     WHERE date(s.created_at) = date('now','localtime') AND s.voided_at IS NULL`
   );
   return {
     revenue: money?.revenue ?? 0,
@@ -267,12 +305,12 @@ export async function getWeekSummary(): Promise<SalesSummary> {
   const db = await getDb();
   const money = await db.getFirstAsync<MoneyRow>(
     `SELECT COUNT(*) AS salesCount, COALESCE(SUM(total), 0) AS revenue
-     FROM sales WHERE date(created_at) >= date('now','localtime','-6 days')`
+     FROM sales WHERE date(created_at) >= date('now','localtime','-6 days') AND voided_at IS NULL`
   );
   const items = await db.getFirstAsync<ItemsRow>(
     `SELECT COALESCE(SUM(si.qty), 0) AS itemsSold
      FROM sale_items si JOIN sales s ON s.id = si.sale_id
-     WHERE date(s.created_at) >= date('now','localtime','-6 days')`
+     WHERE date(s.created_at) >= date('now','localtime','-6 days') AND s.voided_at IS NULL`
   );
   return {
     revenue: money?.revenue ?? 0,
@@ -289,7 +327,7 @@ export async function getTopProducts(days = 7): Promise<TopProduct[]> {
             SUM(si.qty) AS qtySold,
             SUM(si.qty * si.unit_price) AS revenue
      FROM sale_items si JOIN sales s ON s.id = si.sale_id
-     WHERE date(s.created_at) >= date('now','localtime', ?)
+     WHERE date(s.created_at) >= date('now','localtime', ?) AND s.voided_at IS NULL
      GROUP BY si.product_id
      ORDER BY qtySold DESC
      LIMIT 5`,
@@ -398,6 +436,10 @@ export function validateBackup(data: unknown): BackupValidation {
     if (!isRecord(s) || !isNum(s.id) || !isNum(s.total) || !isStr(s.created_at)) {
       return { ok: false, error: 'The backup file is damaged (bad sale row).' };
     }
+    // voided_at is absent in backups made before voiding existed.
+    if (s.voided_at !== undefined && s.voided_at !== null && !isStr(s.voided_at)) {
+      return { ok: false, error: 'The backup file is damaged (bad sale row).' };
+    }
   }
   for (const it of data.sale_items as unknown[]) {
     if (
@@ -433,8 +475,8 @@ export async function restoreAllData(backup: BackupFile): Promise<void> {
     }
     for (const s of backup.sales) {
       await db.runAsync(
-        'INSERT INTO sales (id, total, created_at) VALUES (?, ?, ?)',
-        [s.id, s.total, s.created_at]
+        'INSERT INTO sales (id, total, created_at, voided_at) VALUES (?, ?, ?, ?)',
+        [s.id, s.total, s.created_at, s.voided_at ?? null]
       );
     }
     for (const it of backup.sale_items) {
