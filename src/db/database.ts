@@ -110,9 +110,25 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
   }
 }
 
+// Last-resort recovery: close and delete the database file so the next
+// getDb() starts from a clean schema (used by the recovery screen before
+// restoring a validated backup). Never call this outside that flow.
+export async function resetDatabase(): Promise<void> {
+  if (dbPromise) {
+    try {
+      const db = await dbPromise;
+      await db.closeAsync();
+    } catch (e) {
+      // The database may be unopenable — that's exactly why we're resetting.
+    }
+    dbPromise = null;
+  }
+  await SQLite.deleteDatabaseAsync('shoptally.db');
+}
+
 // --- Settings (key-value) ---
 
-export type SettingKey = 'shopName' | 'lastBackupAt';
+export type SettingKey = 'shopName' | 'lastBackupAt' | 'welcomeDone';
 
 export interface SettingRow {
   key: string;

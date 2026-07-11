@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Text, View, StyleSheet } from 'react-native';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -21,6 +21,9 @@ import SellScreen from './src/screens/SellScreen';
 import InventoryScreen from './src/screens/InventoryScreen';
 import ReportsScreen from './src/screens/ReportsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import WelcomeScreen from './src/screens/WelcomeScreen';
+import RecoveryScreen from './src/screens/RecoveryScreen';
+import { getDb, getSetting } from './src/db/database';
 import type { RootTabParamList, RootStackParamList } from './src/navigation/types';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -78,6 +81,43 @@ function Tabs() {
       />
     </Tab.Navigator>
   );
+}
+
+type BootState = 'loading' | 'failed' | 'welcome' | 'ready';
+
+// Opens the database before any screen renders: a failure shows the recovery
+// screen instead of a white screen, and a first launch (no shop name, welcome
+// never completed) gets the one-time welcome.
+function BootGate({ children }: { children: React.ReactNode }) {
+  const [state, setState] = useState<BootState>('loading');
+
+  const boot = useCallback(async () => {
+    setState('loading');
+    try {
+      await getDb();
+      const [welcomeDone, shopName] = await Promise.all([
+        getSetting('welcomeDone'),
+        getSetting('shopName'),
+      ]);
+      setState(welcomeDone === '1' || (shopName && shopName.length > 0) ? 'ready' : 'welcome');
+    } catch (e) {
+      setState('failed');
+    }
+  }, []);
+
+  useEffect(() => {
+    boot();
+  }, [boot]);
+
+  // The splash stays up until we know what to show.
+  useEffect(() => {
+    if (state !== 'loading') SplashScreen.hideAsync().catch(() => {});
+  }, [state]);
+
+  if (state === 'loading') return null;
+  if (state === 'failed') return <RecoveryScreen onRetry={boot} onRecovered={boot} />;
+  if (state === 'welcome') return <WelcomeScreen onDone={() => setState('ready')} />;
+  return <>{children}</>;
 }
 
 function ThemedApp() {
@@ -139,7 +179,9 @@ export default function App() {
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <ThemeProvider>
-          <ThemedApp />
+          <BootGate>
+            <ThemedApp />
+          </BootGate>
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

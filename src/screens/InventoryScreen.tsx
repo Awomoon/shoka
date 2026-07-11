@@ -45,6 +45,11 @@ import ScreenHeader from '../components/ScreenHeader';
 const STAGGER_CAP = 8;
 const EASE = Easing.out(Easing.cubic);
 
+// Fat-finger guards: values this size are almost always a typo in a small
+// shop, so they get a confirm dialog instead of silently saving.
+const ABSURD_PRICE = 10000000; // ₦10,000,000 for one item
+const ABSURD_QTY = 100000;
+
 interface AddForm {
   name: string;
   price: string;
@@ -239,14 +244,28 @@ export default function InventoryScreen() {
     if (threshold === null || threshold < 0) errors.threshold = 'Must be 0 or more.';
     setAddErrors(errors);
     if (Object.keys(errors).length > 0 || price === null || stock === null || threshold === null) return;
-    try {
-      await addProduct(name, price, stock, threshold);
-      addRef.current?.close();
-      setToast(`${name} added`);
-      load();
-    } catch (e) {
-      Alert.alert('Not saved', 'The product could not be saved. Please try again.');
+    const doSave = async () => {
+      try {
+        await addProduct(name, price, stock, threshold);
+        addRef.current?.close();
+        setToast(`${name} added`);
+        load();
+      } catch (e) {
+        Alert.alert('Not saved', 'The product could not be saved. Please try again.');
+      }
+    };
+    if (price > ABSURD_PRICE || stock > ABSURD_QTY) {
+      Alert.alert(
+        'Please check this',
+        `${name}: ${formatNaira(price)}, ${stock} in stock. Are these numbers right?`,
+        [
+          { text: 'Let me fix it', style: 'cancel' },
+          { text: 'Yes, save', onPress: doSave },
+        ]
+      );
+      return;
     }
+    doSave();
   };
 
   const openEdit = (product: Product) => {
@@ -263,6 +282,7 @@ export default function InventoryScreen() {
 
   const saveEdit = async () => {
     if (!editing) return;
+    const editingId = editing.id;
     const errors: EditErrors = {};
     const name = editForm.name.trim();
     const price = parseIntSafe(editForm.price);
@@ -272,31 +292,52 @@ export default function InventoryScreen() {
     if (threshold === null || threshold < 0) errors.threshold = 'Must be 0 or more.';
     setEditErrors(errors);
     if (Object.keys(errors).length > 0 || price === null || threshold === null) return;
-    try {
-      await updateProduct(editing.id, { name, price, lowStockThreshold: threshold });
-      editRef.current?.close();
-      setToast('Saved');
-      load();
-    } catch (e) {
-      Alert.alert('Not saved', 'The changes could not be saved. Please try again.');
+    const doSave = async () => {
+      try {
+        await updateProduct(editingId, { name, price, lowStockThreshold: threshold });
+        editRef.current?.close();
+        setToast('Saved');
+        load();
+      } catch (e) {
+        Alert.alert('Not saved', 'The changes could not be saved. Please try again.');
+      }
+    };
+    if (price > ABSURD_PRICE) {
+      Alert.alert('Please check this', `${name} at ${formatNaira(price)} — is that price right?`, [
+        { text: 'Let me fix it', style: 'cancel' },
+        { text: 'Yes, save', onPress: doSave },
+      ]);
+      return;
     }
+    doSave();
   };
 
   const doRestock = async () => {
     if (!editing) return;
+    const target = editing;
     const qty = parseIntSafe(editForm.restock);
     if (qty === null || qty <= 0) {
       setEditErrors({ ...editErrors, restock: 'Enter how many you are adding.' });
       return;
     }
-    try {
-      await adjustStock(editing.id, qty);
-      editRef.current?.close();
-      setToast(`+${qty} added to ${editing.name}`);
-      load();
-    } catch (e) {
-      Alert.alert('Not saved', 'The restock could not be saved. Please try again.');
+    const doSave = async () => {
+      try {
+        await adjustStock(target.id, qty);
+        editRef.current?.close();
+        setToast(`+${qty} added to ${target.name}`);
+        load();
+      } catch (e) {
+        Alert.alert('Not saved', 'The restock could not be saved. Please try again.');
+      }
+    };
+    if (qty > ABSURD_QTY) {
+      Alert.alert('Please check this', `Adding ${qty} to ${target.name} — is that right?`, [
+        { text: 'Let me fix it', style: 'cancel' },
+        { text: 'Yes, add it', onPress: doSave },
+      ]);
+      return;
     }
+    doSave();
   };
 
   const confirmRemove = () => {

@@ -8,9 +8,13 @@ Built for small Nigerian shops running on cheap Android phones with unreliable i
 
 ## Features
 
-- ⚡ **Fast selling** — tap product cards to build a cart, drag up the bottom sheet, complete the sale. Haptic feedback on every add, spring animations under 300ms so nothing ever feels like waiting.
-- 📦 **Inventory with visual alerts** — every product card carries a color strip: green (healthy), yellow (at the low-stock threshold), red (below it). Restock and edit from bottom-sheet forms.
+- ⚡ **Fast selling** — tap product cards to build a cart, drag up the bottom sheet, complete the sale. Haptic feedback on every add, smooth sub-300ms animations so nothing ever feels like waiting.
+- 📦 **Inventory with visual alerts** — every product card carries a color strip: green (healthy), yellow (at the low-stock threshold), red (below it). Restock and edit from bottom-sheet forms with fat-finger guards on absurd values.
 - 📊 **Reports that answer the shopkeeper's real questions** — today's money (hero card with count-up), this week, top sellers with relative-quantity bars, a ready-made restock list, and expandable recent sales.
+- 💾 **Backup & restore** *(new in 1.5)* — export the whole business record as a single JSON file to WhatsApp/email via the native share sheet; restore validates the file fully before touching the database and swaps data in one transaction. Reports nudges gently when the last backup is over a week old.
+- ↩️ **Void a sale** *(new in 1.5)* — mistakes at the counter aren't permanent: voiding restores stock in one transaction and removes the sale from every total, while keeping it visible (greyed, VOIDED) in history.
+- 📤 **WhatsApp daily summary** *(new in 1.5)* — one tap composes the day's figures (sales, transactions, items, top item, low-stock list) as plain text for the native share sheet.
+- 🏪 **Shop profile & first-run welcome** *(new in 1.5)* — the shop's name greets the owner on the Sell screen and signs the shared summaries; a database that fails to open shows a recovery screen with restore-from-backup instead of a white screen.
 - 🌗 **Light / dark / system themes** — every color flows from a single token file; dark mode raises surfaces by color step instead of shadows so it stays readable on cheap screens.
 - 🇳🇬 **Naira-native** — whole-number ₦ prices with thousands separators throughout.
 - ♿ **Reduced-motion aware** — decorative animations are skipped when the OS asks.
@@ -56,3 +60,7 @@ eas build -p android --profile preview
 ## License
 
 [MIT](LICENSE)
+
+---
+
+Built by **Moontech** · WhatsApp +234 706 836 7213
