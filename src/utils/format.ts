@@ -37,6 +37,17 @@ export function formatTodayLong(date: Date = new Date()): string {
   return `${WEEKDAYS[date.getDay()]}, ${date.getDate()} ${MONTHS_FULL[date.getMonth()]}`;
 }
 
+// Human date-time for ISO timestamps (e.g. the last-backup line):
+// "10 Jul 2026, 4:15 PM".
+export function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const hh = d.getHours();
+  const h12 = hh % 12 === 0 ? 12 : hh % 12;
+  const ampm = hh < 12 ? 'AM' : 'PM';
+  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${h12}:${String(d.getMinutes()).padStart(2, '0')} ${ampm}`;
+}
+
 export function parseIntSafe(text: string | null | undefined): number | null {
   const digits = String(text ?? '').replace(/[^0-9]/g, '');
   if (digits === '') return null;

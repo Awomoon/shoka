@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TextInput, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, TextInput, ScrollView, Alert, ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Constants from 'expo-constants';
-import { getSetting, setSetting } from '../db/database';
+import { getSetting, setSetting, restoreAllData } from '../db/database';
+import { exportBackup, pickAndValidateBackup } from '../utils/backup';
+import { formatDateTime } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, type, touch, radius } from '../theme';
 import PressableScale from '../components/PressableScale';
@@ -43,14 +45,81 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
   const [shopName, setShopName] = useState('');
   const [nameFocused, setNameFocused] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [lastBackupAt, setLastBackupAt] = useState<string | null>(null);
+  const [busy, setBusy] = useState<'export' | 'restore' | null>(null);
 
-  useEffect(() => {
+  const loadSettings = useCallback(() => {
     getSetting('shopName')
       .then((saved) => {
         if (saved) setShopName(saved);
       })
       .catch(() => {});
+    getSetting('lastBackupAt')
+      .then(setLastBackupAt)
+      .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
+
+  const doExport = async () => {
+    setBusy('export');
+    try {
+      await exportBackup();
+      const now = new Date().toISOString();
+      setLastBackupAt(now);
+      setToast('Backup ready to share');
+    } catch (e) {
+      Alert.alert(
+        'Backup failed',
+        e instanceof Error && e.message ? e.message : 'The backup could not be created. Please try again.'
+      );
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const doRestore = async () => {
+    setBusy('restore');
+    try {
+      const picked = await pickAndValidateBackup();
+      if (picked.status === 'cancelled') return;
+      if (picked.status === 'invalid') {
+        Alert.alert('Cannot restore', `${picked.error} Your current data has not been changed.`);
+        return;
+      }
+      const { backup } = picked;
+      Alert.alert(
+        'Restore this backup?',
+        `Backup from ${formatDateTime(backup.exportedAt)} — ${backup.products.length} products, ${backup.sales.length} sales.\n\nALL current data will be replaced. This cannot be undone.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Replace my data',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await restoreAllData(backup);
+                setShopName('');
+                loadSettings();
+                setToast('Backup restored');
+              } catch (err) {
+                Alert.alert(
+                  'Restore failed',
+                  'Nothing was changed — your current data is intact. Please try again with another file.'
+                );
+              }
+            },
+          },
+        ]
+      );
+    } catch (e) {
+      Alert.alert('Cannot restore', 'The file could not be opened. Your current data has not been changed.');
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const saveShopName = useCallback(async () => {
     try {
@@ -105,6 +174,37 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
           >
             <Text style={[styles.saveBtnText, { color: colors.onPrimary }]}>Save</Text>
           </PressableScale>
+        </SectionCard>
+
+        <SectionCard label="BACKUP & RESTORE">
+          <Text style={[styles.aboutLine, { color: colors.muted, marginTop: 0, marginBottom: spacing.md }]}>
+            Last backup: {lastBackupAt ? formatDateTime(lastBackupAt) : 'never — your records live only on this phone'}
+          </Text>
+          <PressableScale
+            disabled={busy !== null}
+            onPress={doExport}
+            style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+          >
+            {busy === 'export' ? (
+              <ActivityIndicator color={colors.onPrimary} />
+            ) : (
+              <Text style={[styles.saveBtnText, { color: colors.onPrimary }]}>Export backup</Text>
+            )}
+          </PressableScale>
+          <PressableScale
+            disabled={busy !== null}
+            onPress={doRestore}
+            style={[styles.saveBtn, styles.outlineBtn, { borderColor: colors.border, marginTop: spacing.sm }]}
+          >
+            {busy === 'restore' ? (
+              <ActivityIndicator color={colors.primary} />
+            ) : (
+              <Text style={[styles.saveBtnText, { color: colors.text }]}>Restore from backup</Text>
+            )}
+          </PressableScale>
+          <Text style={[styles.hint, { color: colors.muted, marginBottom: 0 }]}>
+            Send the backup file to your own WhatsApp or email. Restoring replaces everything with the backup's contents.
+          </Text>
         </SectionCard>
 
         <SectionCard label="APPEARANCE">
@@ -185,6 +285,10 @@ const styles = StyleSheet.create({
   saveBtnText: {
     fontSize: type.body,
     fontWeight: '800',
+  },
+  outlineBtn: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
   },
   row: {
     flexDirection: 'row',

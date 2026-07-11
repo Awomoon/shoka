@@ -19,6 +19,7 @@ import {
   getTopProducts,
   getRecentSales,
   getLowStockProducts,
+  getSetting,
 } from '../db/database';
 import type { Product, SalesSummary, SaleWithItems, TopProduct } from '../db/database';
 import { useTheme } from '../theme/ThemeContext';
@@ -84,6 +85,7 @@ export default function ReportsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [focusKey, setFocusKey] = useState(0);
+  const [lastBackupAt, setLastBackupAt] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -103,7 +105,17 @@ export default function ReportsScreen() {
     } catch (e) {
       setLoadError("Couldn't load reports. Pull down to try again.");
     }
+    getSetting('lastBackupAt')
+      .then(setLastBackupAt)
+      .catch(() => {});
   }, []);
+
+  // Gentle nudge, never blocking: shown once there are sales worth losing and
+  // the last backup is missing or older than 7 days.
+  const backupAgeDays = lastBackupAt
+    ? Math.floor((Date.now() - new Date(lastBackupAt).getTime()) / (24 * 60 * 60 * 1000))
+    : null;
+  const backupStale = recent.length > 0 && (backupAgeDays === null || backupAgeDays > 7);
 
   // Hero card lands first (fade + slight scale), then the revenue counts up.
   const heroIn = useSharedValue(1);
@@ -168,6 +180,21 @@ export default function ReportsScreen() {
           />
         }
       >
+        {backupStale && (
+          <PressableScale
+            onPress={() => navigation.navigate('Settings')}
+            style={[styles.backupBanner, { backgroundColor: colors.subtle }]}
+          >
+            <Text style={[styles.backupBannerText, { color: colors.muted }]}>
+              💾{' '}
+              {backupAgeDays === null
+                ? 'No backup yet — your records live only on this phone.'
+                : `Last backup was ${backupAgeDays} days ago.`}{' '}
+              <Text style={{ color: colors.primary, fontWeight: '700' }}>Back up now</Text>
+            </Text>
+          </PressableScale>
+        )}
+
         {/* The one place color is spent loudly: today's money. */}
         <Animated.View
           style={[styles.card, styles.heroCard, { backgroundColor: colors.primary }, elevation, heroStyle]}
@@ -396,6 +423,15 @@ const styles = StyleSheet.create({
   },
   gearIcon: {
     fontSize: 20,
+  },
+  backupBanner: {
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  backupBannerText: {
+    fontSize: type.label,
+    lineHeight: 18,
   },
   topRow: {
     justifyContent: 'center',

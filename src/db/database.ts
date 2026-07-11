@@ -320,3 +320,131 @@ export async function getLowStockProducts(): Promise<Product[]> {
      ORDER BY stock_qty ASC, name COLLATE NOCASE`
   );
 }
+
+// --- Backup & restore ---
+// One JSON file holds every table. Restore validates first, then swaps all
+// data inside a single transaction, so a failed restore leaves the current
+// data untouched.
+
+export const BACKUP_SCHEMA_VERSION = 1;
+
+export interface BackupFile {
+  app: 'shoptally';
+  schemaVersion: number;
+  exportedAt: string;
+  products: Product[];
+  sales: Sale[];
+  sale_items: SaleItem[];
+  settings: SettingRow[];
+}
+
+export async function exportAllData(): Promise<BackupFile> {
+  const db = await getDb();
+  const [products, sales, saleItems, settings] = await Promise.all([
+    db.getAllAsync<Product>('SELECT * FROM products ORDER BY id'),
+    db.getAllAsync<Sale>('SELECT * FROM sales ORDER BY id'),
+    db.getAllAsync<SaleItem>('SELECT * FROM sale_items ORDER BY id'),
+    db.getAllAsync<SettingRow>('SELECT key, value FROM settings ORDER BY key'),
+  ]);
+  return {
+    app: 'shoptally',
+    schemaVersion: BACKUP_SCHEMA_VERSION,
+    exportedAt: new Date().toISOString(),
+    products,
+    sales,
+    sale_items: saleItems,
+    settings,
+  };
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const isStr = (v: unknown): v is string => typeof v === 'string';
+
+export type BackupValidation = { ok: true; backup: BackupFile } | { ok: false; error: string };
+
+// Structural validation happens BEFORE the database is touched. Returns a
+// plain-language error, never throws.
+export function validateBackup(data: unknown): BackupValidation {
+  if (!isRecord(data)) return { ok: false, error: 'This file is not a ShopTally backup.' };
+  if (data.app !== 'shoptally') return { ok: false, error: 'This file is not a ShopTally backup.' };
+  if (data.schemaVersion !== BACKUP_SCHEMA_VERSION) {
+    return { ok: false, error: 'This backup was made by a different app version and cannot be restored here.' };
+  }
+  if (!isStr(data.exportedAt)) return { ok: false, error: 'The backup file is missing its export date.' };
+
+  const tables: [string, unknown][] = [
+    ['products', data.products],
+    ['sales', data.sales],
+    ['sale_items', data.sale_items],
+    ['settings', data.settings],
+  ];
+  for (const [name, rows] of tables) {
+    if (!Array.isArray(rows)) return { ok: false, error: `The backup file is damaged (missing ${name}).` };
+  }
+
+  for (const p of data.products as unknown[]) {
+    if (
+      !isRecord(p) || !isNum(p.id) || !isStr(p.name) || !isNum(p.price) ||
+      !isNum(p.stock_qty) || !isNum(p.low_stock_threshold) || !isNum(p.is_active) || !isStr(p.created_at)
+    ) {
+      return { ok: false, error: 'The backup file is damaged (bad product row).' };
+    }
+  }
+  for (const s of data.sales as unknown[]) {
+    if (!isRecord(s) || !isNum(s.id) || !isNum(s.total) || !isStr(s.created_at)) {
+      return { ok: false, error: 'The backup file is damaged (bad sale row).' };
+    }
+  }
+  for (const it of data.sale_items as unknown[]) {
+    if (
+      !isRecord(it) || !isNum(it.id) || !isNum(it.sale_id) || !isNum(it.product_id) ||
+      !isStr(it.product_name) || !isNum(it.unit_price) || !isNum(it.qty)
+    ) {
+      return { ok: false, error: 'The backup file is damaged (bad sale item row).' };
+    }
+  }
+  for (const st of data.settings as unknown[]) {
+    if (!isRecord(st) || !isStr(st.key) || !isStr(st.value)) {
+      return { ok: false, error: 'The backup file is damaged (bad settings row).' };
+    }
+  }
+
+  return { ok: true, backup: data as unknown as BackupFile };
+}
+
+// Replaces ALL data with the backup's contents in one transaction: if any
+// insert fails, everything rolls back and current data survives.
+export async function restoreAllData(backup: BackupFile): Promise<void> {
+  const db = await getDb();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('DELETE FROM sale_items');
+    await db.runAsync('DELETE FROM sales');
+    await db.runAsync('DELETE FROM products');
+    await db.runAsync('DELETE FROM settings');
+    for (const p of backup.products) {
+      await db.runAsync(
+        'INSERT INTO products (id, name, price, stock_qty, low_stock_threshold, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [p.id, p.name, p.price, p.stock_qty, p.low_stock_threshold, p.is_active, p.created_at]
+      );
+    }
+    for (const s of backup.sales) {
+      await db.runAsync(
+        'INSERT INTO sales (id, total, created_at) VALUES (?, ?, ?)',
+        [s.id, s.total, s.created_at]
+      );
+    }
+    for (const it of backup.sale_items) {
+      await db.runAsync(
+        'INSERT INTO sale_items (id, sale_id, product_id, product_name, unit_price, qty) VALUES (?, ?, ?, ?, ?, ?)',
+        [it.id, it.sale_id, it.product_id, it.product_name, it.unit_price, it.qty]
+      );
+    }
+    for (const st of backup.settings) {
+      await db.runAsync('INSERT INTO settings (key, value) VALUES (?, ?)', [st.key, st.value]);
+    }
+  });
+}
