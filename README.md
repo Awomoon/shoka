@@ -63,4 +63,4 @@ eas build -p android --profile preview
 
 ---
 
-Built by **Moontech** · WhatsApp +234 706 836 7213
+Built by **Moontech** · Oyo State, Nigeria · WhatsApp +234 706 836 7213

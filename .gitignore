@@ -3,6 +3,9 @@
 # dependencies
 node_modules/
 
+# build artifacts (released via GitHub Releases, never committed)
+*.apk
+
 # Expo
 .expo/
 dist/

@@ -150,7 +150,7 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
           <TextInput
             value={shopName}
             onChangeText={setShopName}
-            placeholder="e.g. Mama Nkechi Stores"
+            placeholder="e.g. DebbyRR Stores"
             placeholderTextColor={colors.muted}
             onFocus={() => setNameFocused(true)}
             onBlur={() => setNameFocused(false)}
@@ -219,7 +219,7 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
           <Text style={[styles.appName, { color: colors.text }]}>ShopTally</Text>
           <Text style={[styles.aboutLine, { color: colors.muted }]}>Version {version}</Text>
           <Text style={[styles.aboutLine, { color: colors.muted }]}>
-            Built by Moontech · WhatsApp +234 706 836 7213
+            Built by Moontech · Oyo State, Nigeria · WhatsApp +234 706 836 7213
           </Text>
         </SectionCard>
       </ScrollView>

@@ -41,7 +41,7 @@ export default function WelcomeScreen({ onDone }: { onDone: () => void }) {
         <TextInput
           value={name}
           onChangeText={setName}
-          placeholder="e.g. Mama Nkechi Stores"
+          placeholder="e.g. DebbyRR Stores"
           placeholderTextColor={colors.muted}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
