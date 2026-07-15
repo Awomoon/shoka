@@ -157,14 +157,14 @@ export default function ReportsScreen() {
       const topLine = topToday.length > 0 ? `${topToday[0].name} ×${topToday[0].qtySold}` : '—';
       const lowLine = lowNow.length > 0 ? lowNow.map((p) => p.name).join(', ') : 'None';
       const message = [
-        `📊 ${shopName || 'ShopTally'} — Daily Summary`,
+        `📊 ${shopName || 'Shoka'} — Daily Summary`,
         `${formatTodayLong()} ${new Date().getFullYear()}`,
         `💰 Sales: ${formatNaira(t.revenue)}`,
         `🧾 Transactions: ${t.salesCount}`,
         `📦 Items sold: ${t.itemsSold}`,
         `🔝 Top item: ${topLine}`,
         `⚠️ Low stock: ${lowLine}`,
-        '— via ShopTally by Moontech',
+        '— via Shoka by Moontech',
       ].join('\n');
       await Share.share({ message });
     } catch (e) {

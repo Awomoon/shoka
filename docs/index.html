@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ShopTally — Know your shop's money. Even without internet.</title>
-<meta name="description" content="ShopTally is an offline-first sales and inventory app for Nigerian shop owners. Record sales in seconds, track stock automatically, see your money daily. No internet needed. By Moontech, Oyo State, Nigeria.">
-<meta property="og:title" content="ShopTally — Know your shop's money.">
+<title>Shoka — Know your shop's money. Even without internet.</title>
+<meta name="description" content="Shoka is an offline-first sales and inventory app for Nigerian shop owners. Record sales in seconds, track stock automatically, see your money daily. No internet needed. By Moontech, Oyo State, Nigeria.">
+<meta property="og:title" content="Shoka — Know your shop's money.">
 <meta property="og:description" content="Offline sales & stock tracking for Nigerian shops. Record sales in seconds. First week free.">
 <meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -33,9 +33,10 @@
   .wrap{max-width:1060px;margin:0 auto;padding:0 20px}
 
   /* ---------- Tally logo ---------- */
-  .tally{display:inline-flex;align-items:center;gap:0;position:relative;height:22px;width:34px}
-  .tally i{display:block;width:4px;height:22px;background:#fff;border-radius:2px;margin-right:4px}
-  .tally b{position:absolute;left:-3px;top:9px;width:40px;height:4px;background:var(--yellow);border-radius:2px;transform:rotate(-22deg)}
+  .tally{display:inline-flex;align-items:center;gap:0;position:relative;height:24px;width:22px;margin-right:6px}
+  .tally i{display:block;width:3px;height:24px;background:#fff;border-radius:1.5px;margin-right:3px}
+  .tally i:last-of-type{margin-right:0}
+  .tally b{position:absolute;left:-8px;top:10.5px;width:37px;height:3px;background:var(--yellow);border-radius:1.5px;transform:rotate(24deg)}
 
   /* ---------- Header ---------- */
   header{background:var(--green);position:sticky;top:0;z-index:50;box-shadow:0 1px 0 rgba(255,255,255,.08)}
@@ -78,7 +79,7 @@
   .eyebrow{display:flex;align-items:center;gap:12px;margin-bottom:14px}
   .tmark{display:inline-flex;position:relative;height:16px}
   .tmark i{width:3px;height:16px;background:var(--green);border-radius:2px;margin-right:3px;display:block}
-  .tmark b{position:absolute;left:-2px;top:6px;height:3px;background:var(--yellow);border-radius:2px;transform:rotate(-22deg)}
+  .tmark b{position:absolute;left:-2px;top:6px;height:3px;width:100%;min-width:12px;background:var(--yellow);border-radius:2px;transform:rotate(24deg)}
   .eyebrow span{font-family:var(--disp);font-weight:600;font-size:.78rem;letter-spacing:.12em;text-transform:uppercase;color:var(--green)}
   h2{font-family:var(--disp);font-weight:700;font-size:clamp(1.5rem,3.4vw,2.2rem);letter-spacing:-.01em;max-width:22ch}
   .sub{color:var(--muted);margin-top:10px;max-width:52ch}
@@ -178,7 +179,7 @@
   .tally i:nth-child(3){animation-delay:.29s}.tally i:nth-child(4){animation-delay:.41s}
   .tally b{transform-origin:left center;animation:strike .3s ease .6s backwards}
   @keyframes stroke{from{transform:scaleY(0)}to{transform:scaleY(1)}}
-  @keyframes strike{from{transform:rotate(-22deg) scaleX(0)}to{transform:rotate(-22deg) scaleX(1)}}
+  @keyframes strike{from{transform:rotate(24deg) scaleX(0)}to{transform:rotate(24deg) scaleX(1)}}
 
   /* Price panel sheen */
   .price-r{position:relative;overflow:hidden}
@@ -219,9 +220,9 @@
 
 <header>
   <div class="wrap nav">
-    <a class="brand" href="#top" aria-label="ShopTally home">
+    <a class="brand" href="#top" aria-label="Shoka home">
       <span class="tally" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></span>
-      <span>Shop<em>Tally</em></span>
+      <span>Sho<em>ka</em></span>
     </a>
     <a class="cta" href="#download">Get the app</a>
   </div>
@@ -234,16 +235,16 @@
     <div class="wrap">
       <div>
         <h1>Know your shop's money.<br><span class="yl">Even without internet.</span></h1>
-        <p class="lead">ShopTally records every sale in seconds and counts your stock down automatically — on the Android phone you already own.</p>
+        <p class="lead">Shoka records every sale in seconds and counts your stock down automatically — on the phone you already own.</p>
         <div class="btns">
-          <a class="btn btn-yellow" id="apkBtn" href="https://github.com/Awomoon/shoptally/releases/latest/download/shoptally.apk">
+          <a class="btn btn-yellow" id="apkBtn" href="https://github.com/Awomoon/shoka/releases/latest/download/shoka.apk">
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.6 9.48l1.84-3.18c.16-.31.04-.7-.26-.85-.29-.15-.65-.06-.83.21l-1.88 3.24a11.46 11.46 0 0 0-9.04 0L5.55 5.66c-.18-.27-.54-.36-.83-.21-.3.15-.42.54-.26.85L6.3 9.48A10.78 10.78 0 0 0 1 18h22a10.78 10.78 0 0 0-5.4-8.52zM7 15.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5zm10 0a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5z"/></svg>
             Download for Android</a>
-          <a class="btn btn-ghost" href="https://wa.me/2347068367213?text=Hi%20Raphael%2C%20I%20want%20a%20free%20ShopTally%20demo">
+          <a class="btn btn-ghost" href="https://wa.me/2347068367213?text=Hi%20Raphael%2C%20I%20want%20a%20free%20Shoka%20demo">
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.04 2a9.9 9.9 0 0 0-8.4 15.2L2 22l4.9-1.6A9.9 9.9 0 1 0 12.04 2zm0 18.1c-1.6 0-3.1-.4-4.4-1.2l-.3-.2-2.9.9.9-2.8-.2-.3a8.1 8.1 0 1 1 6.9 3.6zm4.5-6c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1-.2.2-.6.8-.8 1-.1.2-.3.2-.5.1a6.6 6.6 0 0 1-3.3-2.9c-.2-.4.2-.4.6-1.2.1-.2 0-.4 0-.5l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.2.3-.9.9-.9 2.2s1 2.6 1.1 2.7c.1.2 1.9 3 4.7 4.2.7.3 1.2.5 1.6.6.7.2 1.3.2 1.8.1.6-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.2-.2-.5-.3z"/></svg>
             Chat on WhatsApp</a>
         </div>
-        <p class="apk-note">Free Android APK · Works fully offline · No account needed</p>
+        <p class="apk-note">Available for Android today · iOS on the roadmap · Works fully offline</p>
       </div>
 
       <!-- CSS phone mockup of the Sell screen -->
@@ -271,7 +272,7 @@
       <blockquote>
         Notebooks get lost. Memory gets tired. And every month, money quietly leaks away through
         miscounted stock, forgotten sales and guesswork restocking.
-        <strong>ShopTally answers the question — exactly, every day.</strong>
+        <strong>Shoka answers the question — exactly, every day.</strong>
       </blockquote>
     </div>
   </section>
@@ -306,7 +307,7 @@
     <div class="wrap rv">
       <div class="eyebrow"><span class="tmark" style="--w:#fff"><i style="background:#fff"></i><i style="background:#fff"></i><i style="background:#fff"></i><b></b></span><span style="color:var(--yellow)">Built for here</span></div>
       <h2>No light? No data? No problem.</h2>
-      <p class="sub">ShopTally was built in Nigeria, for how business really works here.</p>
+      <p class="sub">Shoka was built in Nigeria, for how business really works here.</p>
       <div class="off-grid">
         <div class="off rv">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12L13 2Z"/></svg>
@@ -335,13 +336,13 @@
             <li>All your products and prices loaded for you</li>
             <li>You and your staff trained until comfortable</li>
             <li>Support one WhatsApp message away</li>
-            <li>Updates and new features as ShopTally grows</li>
+            <li>Updates and new features as Shoka grows</li>
           </ul>
         </div>
         <div class="price-r">
-          <span class="free-badge">FIRST WEEK FREE</span>
-          <p>Try ShopTally in your own shop with your own goods. If it doesn't help your business in the first week, you pay nothing.</p>
-          <a class="btn btn-yellow" href="https://wa.me/2347068367213?text=Hi%20Raphael%2C%20I%20want%20to%20start%20my%20free%20ShopTally%20week">
+          <span class="free-badge">FREE TO DOWNLOAD</span>
+          <p>Shoka is free to download today — in-app purchases are coming soon, so early users get in first. Want it set up for you in person? That&#8217;s what we do.</p>
+          <a class="btn btn-yellow" href="https://wa.me/2347068367213?text=Hi%20Raphael%2C%20I%20want%20Shoka%20set%20up%20for%20my%20shop">
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.04 2a9.9 9.9 0 0 0-8.4 15.2L2 22l4.9-1.6A9.9 9.9 0 1 0 12.04 2zm0 18.1c-1.6 0-3.1-.4-4.4-1.2l-.3-.2-2.9.9.9-2.8-.2-.3a8.1 8.1 0 1 1 6.9 3.6zm4.5-6c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1-.2.2-.6.8-.8 1-.1.2-.3.2-.5.1a6.6 6.6 0 0 1-3.3-2.9c-.2-.4.2-.4.6-1.2.1-.2 0-.4 0-.5l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.2.3-.9.9-.9 2.2s1 2.6 1.1 2.7c.1.2 1.9 3 4.7 4.2.7.3 1.2.5 1.6.6.7.2 1.3.2 1.8.1.6-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.2-.2-.5-.3z"/></svg>
             Start my free week</a>
         </div>
@@ -354,10 +355,10 @@
     <div class="wrap rv">
       <h2>Your shop's money, finally clear.</h2>
       <div class="btns">
-        <a class="btn btn-yellow" href="https://github.com/Awomoon/shoptally/releases/latest/download/shoptally.apk">
+        <a class="btn btn-yellow" href="https://github.com/Awomoon/shoka/releases/latest/download/shoka.apk">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.6 9.48l1.84-3.18c.16-.31.04-.7-.26-.85-.29-.15-.65-.06-.83.21l-1.88 3.24a11.46 11.46 0 0 0-9.04 0L5.55 5.66c-.18-.27-.54-.36-.83-.21-.3.15-.42.54-.26.85L6.3 9.48A10.78 10.78 0 0 0 1 18h22a10.78 10.78 0 0 0-5.4-8.52zM7 15.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5zm10 0a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5z"/></svg>
-          Download ShopTally for Android</a>
-        <a class="btn btn-ghost" href="https://wa.me/2347068367213?text=Hi%20Raphael%2C%20I%20have%20a%20question%20about%20ShopTally">
+          Download Shoka for Android</a>
+        <a class="btn btn-ghost" href="https://wa.me/2347068367213?text=Hi%20Raphael%2C%20I%20have%20a%20question%20about%20Shoka">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.04 2a9.9 9.9 0 0 0-8.4 15.2L2 22l4.9-1.6A9.9 9.9 0 1 0 12.04 2zm0 18.1c-1.6 0-3.1-.4-4.4-1.2l-.3-.2-2.9.9.9-2.8-.2-.3a8.1 8.1 0 1 1 6.9 3.6zm4.5-6c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1-.2.2-.6.8-.8 1-.1.2-.3.2-.5.1a6.6 6.6 0 0 1-3.3-2.9c-.2-.4.2-.4.6-1.2.1-.2 0-.4 0-.5l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.2.3-.9.9-.9 2.2s1 2.6 1.1 2.7c.1.2 1.9 3 4.7 4.2.7.3 1.2.5 1.6.6.7.2 1.3.2 1.8.1.6-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.2-.2-.5-.3z"/></svg>
           Ask a question</a>
       </div>
@@ -368,7 +369,7 @@
 
 <footer>
   <div class="wrap">
-    <span>ShopTally — a <strong style="color:#fff">Moontech</strong> product · Oyo State, Nigeria</span>
+    <span>Shoka — a <strong style="color:#fff">Moontech</strong> product · Oyo State, Nigeria</span>
     <span><a href="https://wa.me/2347068367213">WhatsApp +234 706 836 7213</a></span>
   </div>
 </footer>

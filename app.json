@@ -1,17 +1,17 @@
 {
   "expo": {
-    "name": "ShopTally",
-    "slug": "shoptally",
+    "name": "Shoka",
+    "slug": "shoka",
     "version": "1.5.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.shoptally.app"
+      "bundleIdentifier": "com.shoka.app"
     },
     "android": {
-      "package": "com.shoptally.app",
+      "package": "com.shoka.app",
       "adaptiveIcon": {
         "backgroundColor": "#0B5D3B",
         "foregroundImage": "./assets/android-icon-foreground.png",

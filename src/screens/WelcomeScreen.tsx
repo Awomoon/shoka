@@ -32,7 +32,7 @@ export default function WelcomeScreen({ onDone }: { onDone: () => void }) {
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
       <View style={styles.body}>
         <Text style={styles.emoji}>🏪</Text>
-        <Text style={[styles.title, { color: colors.text }]}>Welcome to ShopTally</Text>
+        <Text style={[styles.title, { color: colors.text }]}>Welcome to Shoka</Text>
         <Text style={[styles.subtitle, { color: colors.muted }]}>
           Sell fast, know your stock, see your money — all offline.
         </Text>

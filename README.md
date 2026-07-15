@@ -1,4 +1,4 @@
-# ShopTally
+# Shoka
 
 **Offline-first point-of-sale and inventory tracker for small shops — record a sale in under 5 seconds while the customer waits.**
 
@@ -37,8 +37,8 @@ There is no server. All state is in a local SQLite database (`src/db/database.js
 ## Run it
 
 ```bash
-git clone https://github.com/Awomoon/shoptally.git
-cd shoptally
+git clone https://github.com/Awomoon/shoka.git
+cd shoka
 npm install
 npx expo start
 ```

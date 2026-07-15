@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { palettes, elevations } from '../theme';
 import type { Palette, ResolvedTheme, ThemeMode } from '../theme';
 
-const STORAGE_KEY = 'shoptally.themeMode';
+const STORAGE_KEY = 'shoka.themeMode';
 const MODES: ThemeMode[] = ['system', 'light', 'dark'];
 
 export interface ThemeContextValue {

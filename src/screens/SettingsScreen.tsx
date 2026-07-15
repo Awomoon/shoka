@@ -216,7 +216,7 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
 
         <SectionCard label="ABOUT">
           <LogoMark />
-          <Text style={[styles.appName, { color: colors.text }]}>ShopTally</Text>
+          <Text style={[styles.appName, { color: colors.text }]}>Shoka</Text>
           <Text style={[styles.aboutLine, { color: colors.muted }]}>Version {version}</Text>
           <Text style={[styles.aboutLine, { color: colors.muted }]}>
             Built by Moontech · Oyo State, Nigeria · WhatsApp +234 706 836 7213

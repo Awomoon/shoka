@@ -1,5 +1,36 @@
 // All SQLite logic lives here — nothing else in the app touches the DB.
 import * as SQLite from 'expo-sqlite';
+import { File, Directory, Paths } from 'expo-file-system';
+import { validateBackup, BACKUP_SCHEMA_VERSION } from './backupSchema';
+import type { BackupFile, BackupValidation } from './backupSchema';
+
+export { validateBackup, BACKUP_SCHEMA_VERSION };
+export type { BackupFile, BackupValidation };
+
+const DB_NAME = 'shoka.db';
+// The app shipped v1.5 as ShopTally: devices upgrading to Shoka still carry
+// the old database file, and losing their records over a rename is not
+// acceptable. This literal is a deliberate, permanent exception to the rename.
+const LEGACY_DB_NAME = 'shoptally.db';
+
+// One-time file migration: if the old database exists and the new one
+// doesn't, move it (with its WAL sidecars) to the new name before opening.
+async function migrateLegacyDatabaseFile(): Promise<void> {
+  try {
+    const dir = new Directory(Paths.document, 'SQLite');
+    if (!dir.exists) return;
+    const target = new File(dir, DB_NAME);
+    const legacy = new File(dir, LEGACY_DB_NAME);
+    if (target.exists || !legacy.exists) return;
+    for (const suffix of ['', '-wal', '-shm']) {
+      const from = new File(dir, LEGACY_DB_NAME + suffix);
+      if (from.exists) await from.move(new File(dir, DB_NAME + suffix));
+    }
+  } catch (e) {
+    // Never block boot on the migration — worst case the app opens a fresh
+    // database and the owner restores from a backup.
+  }
+}
 
 // Row shapes mirror the schema below: snake_case, integers for money (naira,
 // whole numbers) and for the is_active soft-delete flag.
@@ -62,7 +93,8 @@ export interface ProductUpdate {
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
 async function init(): Promise<SQLite.SQLiteDatabase> {
-  const db = await SQLite.openDatabaseAsync('shoptally.db');
+  await migrateLegacyDatabaseFile();
+  const db = await SQLite.openDatabaseAsync(DB_NAME);
   await db.execAsync(`
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
@@ -123,7 +155,7 @@ export async function resetDatabase(): Promise<void> {
     }
     dbPromise = null;
   }
-  await SQLite.deleteDatabaseAsync('shoptally.db');
+  await SQLite.deleteDatabaseAsync(DB_NAME);
 }
 
 // --- Settings (key-value) ---
@@ -376,21 +408,9 @@ export async function getLowStockProducts(): Promise<Product[]> {
 }
 
 // --- Backup & restore ---
-// One JSON file holds every table. Restore validates first, then swaps all
-// data inside a single transaction, so a failed restore leaves the current
-// data untouched.
-
-export const BACKUP_SCHEMA_VERSION = 1;
-
-export interface BackupFile {
-  app: 'shoptally';
-  schemaVersion: number;
-  exportedAt: string;
-  products: Product[];
-  sales: Sale[];
-  sale_items: SaleItem[];
-  settings: SettingRow[];
-}
+// One JSON file holds every table (format + validation live in
+// backupSchema.ts). Restore validates first, then swaps all data inside a
+// single transaction, so a failed restore leaves the current data untouched.
 
 export async function exportAllData(): Promise<BackupFile> {
   const db = await getDb();
@@ -401,7 +421,7 @@ export async function exportAllData(): Promise<BackupFile> {
     db.getAllAsync<SettingRow>('SELECT key, value FROM settings ORDER BY key'),
   ]);
   return {
-    app: 'shoptally',
+    app: 'shoka',
     schemaVersion: BACKUP_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     products,
@@ -409,69 +429,6 @@ export async function exportAllData(): Promise<BackupFile> {
     sale_items: saleItems,
     settings,
   };
-}
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
-const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
-const isStr = (v: unknown): v is string => typeof v === 'string';
-
-export type BackupValidation = { ok: true; backup: BackupFile } | { ok: false; error: string };
-
-// Structural validation happens BEFORE the database is touched. Returns a
-// plain-language error, never throws.
-export function validateBackup(data: unknown): BackupValidation {
-  if (!isRecord(data)) return { ok: false, error: 'This file is not a ShopTally backup.' };
-  if (data.app !== 'shoptally') return { ok: false, error: 'This file is not a ShopTally backup.' };
-  if (data.schemaVersion !== BACKUP_SCHEMA_VERSION) {
-    return { ok: false, error: 'This backup was made by a different app version and cannot be restored here.' };
-  }
-  if (!isStr(data.exportedAt)) return { ok: false, error: 'The backup file is missing its export date.' };
-
-  const tables: [string, unknown][] = [
-    ['products', data.products],
-    ['sales', data.sales],
-    ['sale_items', data.sale_items],
-    ['settings', data.settings],
-  ];
-  for (const [name, rows] of tables) {
-    if (!Array.isArray(rows)) return { ok: false, error: `The backup file is damaged (missing ${name}).` };
-  }
-
-  for (const p of data.products as unknown[]) {
-    if (
-      !isRecord(p) || !isNum(p.id) || !isStr(p.name) || !isNum(p.price) ||
-      !isNum(p.stock_qty) || !isNum(p.low_stock_threshold) || !isNum(p.is_active) || !isStr(p.created_at)
-    ) {
-      return { ok: false, error: 'The backup file is damaged (bad product row).' };
-    }
-  }
-  for (const s of data.sales as unknown[]) {
-    if (!isRecord(s) || !isNum(s.id) || !isNum(s.total) || !isStr(s.created_at)) {
-      return { ok: false, error: 'The backup file is damaged (bad sale row).' };
-    }
-    // voided_at is absent in backups made before voiding existed.
-    if (s.voided_at !== undefined && s.voided_at !== null && !isStr(s.voided_at)) {
-      return { ok: false, error: 'The backup file is damaged (bad sale row).' };
-    }
-  }
-  for (const it of data.sale_items as unknown[]) {
-    if (
-      !isRecord(it) || !isNum(it.id) || !isNum(it.sale_id) || !isNum(it.product_id) ||
-      !isStr(it.product_name) || !isNum(it.unit_price) || !isNum(it.qty)
-    ) {
-      return { ok: false, error: 'The backup file is damaged (bad sale item row).' };
-    }
-  }
-  for (const st of data.settings as unknown[]) {
-    if (!isRecord(st) || !isStr(st.key) || !isStr(st.value)) {
-      return { ok: false, error: 'The backup file is damaged (bad settings row).' };
-    }
-  }
-
-  return { ok: true, backup: data as unknown as BackupFile };
 }
 
 // Replaces ALL data with the backup's contents in one transaction: if any

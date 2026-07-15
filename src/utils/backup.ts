@@ -10,7 +10,7 @@ function backupFilename(date = new Date()): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
-  return `shoptally-backup-${y}-${m}-${d}.json`;
+  return `shoka-backup-${y}-${m}-${d}.json`;
 }
 
 // Serializes every table to JSON, writes it to the cache directory and opens
@@ -28,7 +28,7 @@ export async function exportBackup(): Promise<void> {
   }
   await Sharing.shareAsync(file.uri, {
     mimeType: 'application/json',
-    dialogTitle: 'Save your ShopTally backup',
+    dialogTitle: 'Save your Shoka backup',
   });
   await setSetting('lastBackupAt', new Date().toISOString());
 }
