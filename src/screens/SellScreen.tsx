@@ -6,6 +6,7 @@ import {
   FlatList,
   Alert,
   ActivityIndicator,
+  Share,
   StyleSheet,
   useWindowDimensions,
 } from 'react-native';
@@ -36,16 +37,18 @@ import Animated, {
   useReducedMotion,
   ReduceMotion,
 } from 'react-native-reanimated';
-import { listProducts, recordSale, getSetting } from '../db/database';
-import type { Product } from '../db/database';
+import { listProducts, recordSale, getSetting, getCreditCustomers } from '../db/database';
+import type { Product, SaleWithItems } from '../db/database';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, type, touch, radius, getTypeScale } from '../theme';
 import { formatNaira } from '../utils/format';
+import { buildReceiptText, nowSqlite } from '../utils/receipt';
 import PressableScale from '../components/PressableScale';
 import Toast from '../components/Toast';
 import SuccessOverlay from '../components/SuccessOverlay';
 import EmptyState from '../components/EmptyState';
 import { GreetingHeader } from '../components/ScreenHeader';
+import { QuantityPad, PriceEditor, CreditCustomerPrompt } from '../components/SaleDialogs';
 import type { RootTabParamList } from '../navigation/types';
 
 // Fat-finger protection: confirm before recording unusually large sales.
@@ -64,10 +67,11 @@ interface ProductCardProps {
   item: Product;
   inCart: number;
   onAdd: (product: Product) => boolean;
+  onLongPress: (product: Product) => void;
   index: number;
 }
 
-function ProductCard({ item, inCart, onAdd, index }: ProductCardProps) {
+function ProductCard({ item, inCart, onAdd, onLongPress, index }: ProductCardProps) {
   const { colors, elevation } = useTheme();
   const reduceMotion = useReducedMotion();
   const { width } = useWindowDimensions();
@@ -117,6 +121,7 @@ function ProductCard({ item, inCart, onAdd, index }: ProductCardProps) {
     >
       <PressableScale
         onPress={handlePress}
+        onLongPress={() => onLongPress(item)}
         style={[
           styles.card,
           { backgroundColor: colors.raised },
@@ -171,9 +176,20 @@ export default function SellScreen({ navigation }: SellScreenProps) {
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [receiptText, setReceiptText] = useState<string | null>(null);
   const [shopName, setShopName] = useState<string | null>(null);
 
+  // Per-sale price overrides (haggling): productId -> charged price.
+  // The product's stored price is never changed from the cart.
+  const [priceOverrides, setPriceOverrides] = useState<Record<number, number>>({});
+  const [qtyPadProduct, setQtyPadProduct] = useState<Product | null>(null);
+  const [priceEditProduct, setPriceEditProduct] = useState<Product | null>(null);
+  const [creditPromptVisible, setCreditPromptVisible] = useState(false);
+  const [creditSuggestions, setCreditSuggestions] = useState<string[]>([]);
+
   const sheetRef = useRef<BottomSheet>(null);
+
+  const priceFor = (p: Product) => priceOverrides[p.id] ?? p.price;
 
   const load = useCallback(async () => {
     try {
@@ -210,7 +226,7 @@ export default function SellScreen({ navigation }: SellScreenProps) {
     [products, cart]
   );
   const cartCount = cartLines.reduce((sum, l) => sum + l.qty, 0);
-  const cartTotal = cartLines.reduce((sum, l) => sum + l.qty * l.product.price, 0);
+  const cartTotal = cartLines.reduce((sum, l) => sum + l.qty * priceFor(l.product), 0);
 
   // The total dips (1 → 0.4 → 1 opacity, 150ms) as the number updates —
   // subtle, no transform, nothing for layout animations to overwrite.
@@ -239,19 +255,32 @@ export default function SellScreen({ navigation }: SellScreenProps) {
     easing: EASE,
   });
 
-  const addToCart = (product: Product): boolean => {
+  const addToCart = (product: Product, qty = 1): boolean => {
     if (product.stock_qty <= 0) {
       setToast('Out of stock');
       return false;
     }
     const current = cart[product.id] || 0;
-    if (current >= product.stock_qty) {
+    if (current + qty > product.stock_qty) {
       setToast(`Only ${product.stock_qty} in stock`);
       return false;
     }
-    setCart({ ...cart, [product.id]: current + 1 });
+    setCart({ ...cart, [product.id]: current + qty });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     return true;
+  };
+
+  // Long-press quantity entry: sell 10 of something in one gesture.
+  const openQtyPad = (product: Product) => {
+    if (product.stock_qty <= 0) {
+      setToast('Out of stock');
+      return;
+    }
+    if ((cart[product.id] || 0) >= product.stock_qty) {
+      setToast(`Only ${product.stock_qty} in stock`);
+      return;
+    }
+    setQtyPadProduct(product);
   };
 
   const changeQty = (product: Product, delta: number) => {
@@ -268,36 +297,89 @@ export default function SellScreen({ navigation }: SellScreenProps) {
     const nextCart = { ...cart };
     delete nextCart[product.id];
     setCart(nextCart);
+    const nextOverrides = { ...priceOverrides };
+    delete nextOverrides[product.id];
+    setPriceOverrides(nextOverrides);
+  };
+
+  const doRecord = async (isCredit: boolean, customerName?: string) => {
+    setSubmitting(true);
+    const linesSnapshot = cartLines.map((l) => ({
+      product: l.product,
+      qty: l.qty,
+      charged: priceFor(l.product),
+    }));
+    try {
+      const { saleId, total } = await recordSale(
+        linesSnapshot.map((l) => ({
+          productId: l.product.id,
+          qty: l.qty,
+          unitPrice: priceOverrides[l.product.id],
+        })),
+        { isCredit, customerName }
+      );
+      // Receipt built from the snapshot so it's ready before any re-query.
+      const saleForReceipt: SaleWithItems = {
+        id: saleId,
+        total,
+        created_at: nowSqlite(),
+        voided_at: null,
+        is_credit: isCredit ? 1 : 0,
+        customer_name: isCredit ? customerName ?? null : null,
+        paid_at: null,
+        items: linesSnapshot.map((l, i) => ({
+          id: i,
+          sale_id: saleId,
+          product_id: l.product.id,
+          product_name: l.product.name,
+          unit_price: l.charged,
+          list_price: l.product.price,
+          qty: l.qty,
+        })),
+      };
+      setReceiptText(buildReceiptText(shopName, saleForReceipt));
+      setCart({});
+      setPriceOverrides({});
+      sheetRef.current?.close();
+      setSuccess(
+        isCredit
+          ? `On credit — ${customerName} owes ${formatNaira(total)}`
+          : `Sale recorded — ${formatNaira(total)}`
+      );
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    } catch (e) {
+      Alert.alert(
+        'Sale not recorded',
+        e instanceof Error && e.message ? e.message : 'Something went wrong. Please try again.'
+      );
+    } finally {
+      setSubmitting(false);
+      load();
+    }
+  };
+
+  const openCreditPrompt = () => {
+    getCreditCustomers()
+      .then(setCreditSuggestions)
+      .catch(() => setCreditSuggestions([]));
+    setCreditPromptVisible(true);
   };
 
   const completeSale = () => {
-    const doRecord = async () => {
-      setSubmitting(true);
-      try {
-        const { total } = await recordSale(
-          cartLines.map((l) => ({ productId: l.product.id, qty: l.qty }))
-        );
-        setCart({});
-        sheetRef.current?.close();
-        setSuccess(`Sale recorded — ${formatNaira(total)}`);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      } catch (e) {
-        Alert.alert(
-          'Sale not recorded',
-          e instanceof Error && e.message ? e.message : 'Something went wrong. Please try again.'
-        );
-      } finally {
-        setSubmitting(false);
-        load();
-      }
+    const choosePayment = () => {
+      Alert.alert('How is this sale paid?', formatNaira(cartTotal), [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'On credit', onPress: openCreditPrompt },
+        { text: 'Paid now', onPress: () => doRecord(false) },
+      ]);
     };
     if (cartTotal > LARGE_SALE_THRESHOLD) {
       Alert.alert('Large sale', `This sale is ${formatNaira(cartTotal)}. Record it?`, [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Yes, record it', onPress: doRecord },
+        { text: 'Yes, record it', onPress: choosePayment },
       ]);
     } else {
-      doRecord();
+      choosePayment();
     }
   };
 
@@ -344,7 +426,13 @@ export default function SellScreen({ navigation }: SellScreenProps) {
   );
 
   const renderProduct: ListRenderItem<Product> = ({ item, index }) => (
-    <ProductCard item={item} inCart={cart[item.id] || 0} onAdd={addToCart} index={index} />
+    <ProductCard
+      item={item}
+      inCart={cart[item.id] || 0}
+      onAdd={addToCart}
+      onLongPress={openQtyPad}
+      index={index}
+    />
   );
 
   if (!loading && products.length === 0 && !loadError) {
@@ -476,9 +564,18 @@ export default function SellScreen({ navigation }: SellScreenProps) {
                   <Text numberOfLines={1} style={[styles.cartRowName, { color: colors.text }]}>
                     {product.name}
                   </Text>
-                  <Text style={[styles.cartRowPrice, { color: colors.muted }]}>
-                    {formatNaira(product.price)} each
-                  </Text>
+                  {/* Tap the price to haggle — adjusts this sale only. */}
+                  <PressableScale
+                    onPress={() => setPriceEditProduct(product)}
+                    scaleTo={0.95}
+                    hitSlop={6}
+                    style={styles.priceTap}
+                  >
+                    <Text style={[styles.cartRowPrice, { color: priceOverrides[product.id] !== undefined ? colors.primary : colors.muted }]}>
+                      {formatNaira(priceFor(product))} each
+                      {priceOverrides[product.id] !== undefined ? `  (was ${formatNaira(product.price)})` : '  ✎'}
+                    </Text>
+                  </PressableScale>
                 </View>
                 <View style={styles.stepper}>
                   <PressableScale
@@ -497,7 +594,7 @@ export default function SellScreen({ navigation }: SellScreenProps) {
                   </PressableScale>
                 </View>
                 <Text style={[styles.lineTotal, { color: colors.text }]}>
-                  {formatNaira(product.price * qty)}
+                  {formatNaira(priceFor(product) * qty)}
                 </Text>
                 <PressableScale
                   onPress={() => removeLine(product)}
@@ -523,8 +620,65 @@ export default function SellScreen({ navigation }: SellScreenProps) {
         </BottomSheetScrollView>
       </BottomSheet>
 
+      <QuantityPad
+        visible={qtyPadProduct !== null}
+        productName={qtyPadProduct?.name ?? ''}
+        maxQty={qtyPadProduct ? qtyPadProduct.stock_qty - (cart[qtyPadProduct.id] || 0) : 0}
+        onSubmit={(qty) => {
+          if (qtyPadProduct) addToCart(qtyPadProduct, qty);
+          setQtyPadProduct(null);
+        }}
+        onClose={() => setQtyPadProduct(null)}
+      />
+
+      <PriceEditor
+        visible={priceEditProduct !== null}
+        productName={priceEditProduct?.name ?? ''}
+        listPrice={priceEditProduct?.price ?? 0}
+        currentPrice={priceEditProduct ? priceFor(priceEditProduct) : 0}
+        onSubmit={(price) => {
+          if (priceEditProduct) {
+            if (price === priceEditProduct.price) {
+              const next = { ...priceOverrides };
+              delete next[priceEditProduct.id];
+              setPriceOverrides(next);
+            } else {
+              setPriceOverrides({ ...priceOverrides, [priceEditProduct.id]: price });
+            }
+          }
+          setPriceEditProduct(null);
+        }}
+        onClose={() => setPriceEditProduct(null)}
+      />
+
+      <CreditCustomerPrompt
+        visible={creditPromptVisible}
+        suggestions={creditSuggestions}
+        onSubmit={(name) => {
+          setCreditPromptVisible(false);
+          doRecord(true, name);
+        }}
+        onClose={() => setCreditPromptVisible(false)}
+      />
+
       {toast && <Toast message={toast} onHide={() => setToast(null)} />}
-      {success && <SuccessOverlay message={success} onDone={() => setSuccess(null)} />}
+      {success && (
+        <SuccessOverlay
+          message={success}
+          onDone={() => {
+            setSuccess(null);
+            setReceiptText(null);
+          }}
+          actionLabel={receiptText ? 'Send receipt' : undefined}
+          onAction={
+            receiptText
+              ? () => {
+                  Share.share({ message: receiptText }).catch(() => {});
+                }
+              : undefined
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -665,6 +819,10 @@ const styles = StyleSheet.create({
   cartRowPrice: {
     fontSize: type.label,
     marginTop: 2,
+  },
+  priceTap: {
+    minHeight: 32, // comfortably tappable without inflating the row
+    justifyContent: 'center',
   },
   stepper: {
     flexDirection: 'row',

@@ -10,7 +10,8 @@ import Animated, {
   useReducedMotion,
 } from 'react-native-reanimated';
 import { useTheme } from '../theme/ThemeContext';
-import { spacing, type, radius } from '../theme';
+import { spacing, type, touch, radius } from '../theme';
+import PressableScale from './PressableScale';
 
 const EASE = Easing.out(Easing.cubic);
 
@@ -18,18 +19,27 @@ interface SuccessOverlayProps {
   message: string;
   onDone: () => void;
   duration?: number;
+  actionLabel?: string; // e.g. "Send receipt" — overlay stays up longer when present
+  onAction?: () => void;
 }
 
 // The "ka-ching" moment: fades and settles from 0.95 to 1 in 200ms — smooth,
 // no pop — holds, then the backdrop fades everything out in 150ms.
-export default function SuccessOverlay({ message, onDone, duration = 1200 }: SuccessOverlayProps) {
+export default function SuccessOverlay({
+  message,
+  onDone,
+  duration,
+  actionLabel,
+  onAction,
+}: SuccessOverlayProps) {
   const { colors } = useTheme();
   const reduceMotion = useReducedMotion();
+  const holdFor = duration ?? (actionLabel ? 4000 : 1200);
 
   useEffect(() => {
-    const t = setTimeout(onDone, duration);
+    const t = setTimeout(onDone, holdFor);
     return () => clearTimeout(t);
-  }, [duration, onDone]);
+  }, [holdFor, onDone]);
 
   // Driven by a shared value, not an entering animation, so opacity and
   // transform live on a node with no layout animation to fight.
@@ -54,6 +64,17 @@ export default function SuccessOverlay({ message, onDone, duration = 1200 }: Suc
           <Text style={[styles.check, { color: colors.onPrimary }]}>✓</Text>
         </View>
         <Text style={[styles.message, { color: colors.overlayText }]}>{message}</Text>
+        {actionLabel && onAction ? (
+          <PressableScale
+            onPress={() => {
+              onAction();
+              onDone();
+            }}
+            style={[styles.actionBtn, { backgroundColor: colors.accent }]}
+          >
+            <Text style={[styles.actionText, { color: colors.onAccent }]}>{actionLabel}</Text>
+          </PressableScale>
+        ) : null}
       </Animated.View>
     </Animated.View>
   );
@@ -90,5 +111,17 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     fontSize: type.title,
     fontWeight: '700',
+  },
+  actionBtn: {
+    marginTop: spacing.lg,
+    minHeight: touch.minTarget,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionText: {
+    fontSize: type.body,
+    fontWeight: '800',
   },
 });

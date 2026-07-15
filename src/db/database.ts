@@ -49,6 +49,9 @@ export interface Sale {
   total: number;
   created_at: string;
   voided_at: string | null; // set = sale was voided; excluded from all totals
+  is_credit: number; // 1 = sold on credit; excluded from cash revenue until paid
+  customer_name: string | null; // who owes, when is_credit = 1
+  paid_at: string | null; // when the credit was settled
 }
 
 export interface SaleItem {
@@ -56,14 +59,21 @@ export interface SaleItem {
   sale_id: number;
   product_id: number;
   product_name: string;
-  unit_price: number;
+  unit_price: number; // what was actually charged this sale (haggling happens)
+  list_price: number | null; // the catalog price at sale time; null on pre-v1.6 rows
   qty: number;
 }
 
 // What the Sell screen hands to recordSale.
-export interface CartItem {
+export interface SaleLineInput {
   productId: number;
   qty: number;
+  unitPrice?: number; // per-sale price override; omitted = catalog price
+}
+
+export interface RecordSaleOptions {
+  isCredit?: boolean;
+  customerName?: string;
 }
 
 export interface SaleWithItems extends Sale {
@@ -71,9 +81,10 @@ export interface SaleWithItems extends Sale {
 }
 
 export interface SalesSummary {
-  revenue: number;
+  revenue: number; // cash: excludes unpaid credit sales
   salesCount: number;
   itemsSold: number;
+  owed: number; // unpaid credit total from the same period
 }
 
 export interface TopProduct {
@@ -137,8 +148,23 @@ async function init(): Promise<SQLite.SQLiteDatabase> {
 // versions: check before ALTER, never destructive.
 async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
   const salesColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(sales)');
-  if (!salesColumns.some((c) => c.name === 'voided_at')) {
+  const salesHas = (name: string) => salesColumns.some((c) => c.name === name);
+  if (!salesHas('voided_at')) {
     await db.execAsync('ALTER TABLE sales ADD COLUMN voided_at TEXT NULL');
+  }
+  if (!salesHas('is_credit')) {
+    await db.execAsync('ALTER TABLE sales ADD COLUMN is_credit INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!salesHas('customer_name')) {
+    await db.execAsync('ALTER TABLE sales ADD COLUMN customer_name TEXT NULL');
+  }
+  if (!salesHas('paid_at')) {
+    await db.execAsync('ALTER TABLE sales ADD COLUMN paid_at TEXT NULL');
+  }
+
+  const itemColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(sale_items)');
+  if (!itemColumns.some((c) => c.name === 'list_price')) {
+    await db.execAsync('ALTER TABLE sale_items ADD COLUMN list_price INTEGER NULL');
   }
 }
 
@@ -248,17 +274,27 @@ export async function adjustStock(id: number, delta: number): Promise<void> {
 }
 
 // Runs in one transaction: any failure rolls the whole sale back.
+// Each line may carry a per-sale price override (unit_price = charged,
+// list_price = catalog price at sale time); the product's stored price is
+// never changed from the cart. Credit sales reduce stock immediately and
+// require the customer's name.
 export async function recordSale(
-  cartItems: CartItem[]
+  cartItems: SaleLineInput[],
+  options: RecordSaleOptions = {}
 ): Promise<{ saleId: number; total: number }> {
   if (!Array.isArray(cartItems) || cartItems.length === 0) {
     throw new Error('The cart is empty.');
+  }
+  const isCredit = options.isCredit === true;
+  const customerName = (options.customerName ?? '').trim();
+  if (isCredit && !customerName) {
+    throw new Error("A credit sale needs the customer's name.");
   }
   const db = await getDb();
   let saleId = 0;
   let total = 0;
   await db.withTransactionAsync(async () => {
-    const lines: { product: Product; qty: number }[] = [];
+    const lines: { product: Product; qty: number; charged: number }[] = [];
     total = 0;
     for (const item of cartItems) {
       const qty = Math.round(item.qty);
@@ -273,18 +309,25 @@ export async function recordSale(
       if (product.stock_qty < qty) {
         throw new Error(`Not enough stock for ${product.name} — only ${product.stock_qty} left.`);
       }
-      lines.push({ product, qty });
-      total += product.price * qty;
+      const charged = item.unitPrice === undefined ? product.price : Math.round(item.unitPrice);
+      if (charged < 0) {
+        throw new Error(`The price for ${product.name} cannot be below ₦0.`);
+      }
+      lines.push({ product, qty, charged });
+      total += charged * qty;
     }
     if (lines.length === 0) throw new Error('The cart is empty.');
 
-    const saleResult = await db.runAsync('INSERT INTO sales (total) VALUES (?)', [total]);
+    const saleResult = await db.runAsync(
+      'INSERT INTO sales (total, is_credit, customer_name) VALUES (?, ?, ?)',
+      [total, isCredit ? 1 : 0, isCredit ? customerName : null]
+    );
     saleId = saleResult.lastInsertRowId;
 
-    for (const { product, qty } of lines) {
+    for (const { product, qty, charged } of lines) {
       await db.runAsync(
-        'INSERT INTO sale_items (sale_id, product_id, product_name, unit_price, qty) VALUES (?, ?, ?, ?, ?)',
-        [saleId, product.id, product.name, product.price, qty]
+        'INSERT INTO sale_items (sale_id, product_id, product_name, unit_price, list_price, qty) VALUES (?, ?, ?, ?, ?, ?)',
+        [saleId, product.id, product.name, charged, product.price, qty]
       );
       await db.runAsync(
         'UPDATE products SET stock_qty = stock_qty - ? WHERE id = ?',
@@ -293,6 +336,42 @@ export async function recordSale(
     }
   });
   return { saleId, total };
+}
+
+// --- Credit sales ---
+
+export async function getUnpaidCredits(): Promise<Sale[]> {
+  const db = await getDb();
+  return db.getAllAsync<Sale>(
+    `SELECT * FROM sales
+     WHERE is_credit = 1 AND paid_at IS NULL AND voided_at IS NULL
+     ORDER BY customer_name COLLATE NOCASE, id DESC`
+  );
+}
+
+// Marks a credit sale as settled. Deliberate accounting choice: the revenue
+// counts on the ORIGINAL sale date (summary queries filter by created_at and
+// include paid credits), NOT on the payment date — the sale economically
+// happened when the goods left the shelf; paid_at only records when the
+// money arrived.
+export async function markCreditPaid(saleId: number): Promise<void> {
+  const db = await getDb();
+  const result = await db.runAsync(
+    "UPDATE sales SET paid_at = datetime('now','localtime') WHERE id = ? AND is_credit = 1 AND paid_at IS NULL AND voided_at IS NULL",
+    [saleId]
+  );
+  if (result.changes === 0) throw new Error('This sale is not an open credit.');
+}
+
+// Recent credit customers, for name suggestions at checkout.
+export async function getCreditCustomers(): Promise<string[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ customer_name: string }>(
+    `SELECT customer_name, MAX(id) AS latest FROM sales
+     WHERE is_credit = 1 AND customer_name IS NOT NULL
+     GROUP BY customer_name ORDER BY latest DESC LIMIT 8`
+  );
+  return rows.map((r) => r.customer_name);
 }
 
 // Voids a sale: marks it and puts every line item's quantity back in stock,
@@ -325,16 +404,25 @@ export async function voidSale(saleId: number): Promise<void> {
 interface MoneyRow {
   salesCount: number;
   revenue: number;
+  owed: number;
 }
 
 interface ItemsRow {
   itemsSold: number;
 }
 
+// Cash revenue excludes credit sales until they are marked paid; once paid,
+// the amount counts here on the ORIGINAL sale date (this query filters by
+// created_at). Unpaid credit from the period shows separately as `owed`.
+const SUMMARY_MONEY_SELECT = `
+  COUNT(*) AS salesCount,
+  COALESCE(SUM(CASE WHEN is_credit = 0 OR paid_at IS NOT NULL THEN total ELSE 0 END), 0) AS revenue,
+  COALESCE(SUM(CASE WHEN is_credit = 1 AND paid_at IS NULL THEN total ELSE 0 END), 0) AS owed`;
+
 export async function getTodaySummary(): Promise<SalesSummary> {
   const db = await getDb();
   const money = await db.getFirstAsync<MoneyRow>(
-    `SELECT COUNT(*) AS salesCount, COALESCE(SUM(total), 0) AS revenue
+    `SELECT ${SUMMARY_MONEY_SELECT}
      FROM sales WHERE date(created_at) = date('now','localtime') AND voided_at IS NULL`
   );
   const items = await db.getFirstAsync<ItemsRow>(
@@ -346,13 +434,14 @@ export async function getTodaySummary(): Promise<SalesSummary> {
     revenue: money?.revenue ?? 0,
     salesCount: money?.salesCount ?? 0,
     itemsSold: items?.itemsSold ?? 0,
+    owed: money?.owed ?? 0,
   };
 }
 
 export async function getWeekSummary(): Promise<SalesSummary> {
   const db = await getDb();
   const money = await db.getFirstAsync<MoneyRow>(
-    `SELECT COUNT(*) AS salesCount, COALESCE(SUM(total), 0) AS revenue
+    `SELECT ${SUMMARY_MONEY_SELECT}
      FROM sales WHERE date(created_at) >= date('now','localtime','-6 days') AND voided_at IS NULL`
   );
   const items = await db.getFirstAsync<ItemsRow>(
@@ -364,6 +453,7 @@ export async function getWeekSummary(): Promise<SalesSummary> {
     revenue: money?.revenue ?? 0,
     salesCount: money?.salesCount ?? 0,
     itemsSold: items?.itemsSold ?? 0,
+    owed: money?.owed ?? 0,
   };
 }
 
@@ -448,14 +538,14 @@ export async function restoreAllData(backup: BackupFile): Promise<void> {
     }
     for (const s of backup.sales) {
       await db.runAsync(
-        'INSERT INTO sales (id, total, created_at, voided_at) VALUES (?, ?, ?, ?)',
-        [s.id, s.total, s.created_at, s.voided_at ?? null]
+        'INSERT INTO sales (id, total, created_at, voided_at, is_credit, customer_name, paid_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [s.id, s.total, s.created_at, s.voided_at ?? null, s.is_credit ?? 0, s.customer_name ?? null, s.paid_at ?? null]
       );
     }
     for (const it of backup.sale_items) {
       await db.runAsync(
-        'INSERT INTO sale_items (id, sale_id, product_id, product_name, unit_price, qty) VALUES (?, ?, ?, ?, ?, ?)',
-        [it.id, it.sale_id, it.product_id, it.product_name, it.unit_price, it.qty]
+        'INSERT INTO sale_items (id, sale_id, product_id, product_name, unit_price, list_price, qty) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [it.id, it.sale_id, it.product_id, it.product_name, it.unit_price, it.list_price ?? null, it.qty]
       );
     }
     for (const st of backup.settings) {

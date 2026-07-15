@@ -58,12 +58,21 @@ export function validateBackup(data: unknown): BackupValidation {
       return { ok: false, error: 'The backup file is damaged (bad product row).' };
     }
   }
+  // Columns added after the first release are absent in older backups, so
+  // each is optional: reject only a present-but-wrong type.
+  const optional = (v: unknown, check: (x: unknown) => boolean) =>
+    v === undefined || v === null || check(v);
+
   for (const s of data.sales as unknown[]) {
     if (!isRecord(s) || !isNum(s.id) || !isNum(s.total) || !isStr(s.created_at)) {
       return { ok: false, error: 'The backup file is damaged (bad sale row).' };
     }
-    // Columns added after the first release are absent in older backups.
-    if (s.voided_at !== undefined && s.voided_at !== null && !isStr(s.voided_at)) {
+    if (
+      !optional(s.voided_at, isStr) ||
+      !optional(s.is_credit, isNum) ||
+      !optional(s.customer_name, isStr) ||
+      !optional(s.paid_at, isStr)
+    ) {
       return { ok: false, error: 'The backup file is damaged (bad sale row).' };
     }
   }
@@ -72,6 +81,9 @@ export function validateBackup(data: unknown): BackupValidation {
       !isRecord(it) || !isNum(it.id) || !isNum(it.sale_id) || !isNum(it.product_id) ||
       !isStr(it.product_name) || !isNum(it.unit_price) || !isNum(it.qty)
     ) {
+      return { ok: false, error: 'The backup file is damaged (bad sale item row).' };
+    }
+    if (!optional(it.list_price, isNum)) {
       return { ok: false, error: 'The backup file is damaged (bad sale item row).' };
     }
   }

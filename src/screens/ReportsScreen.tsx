@@ -19,13 +19,16 @@ import {
   getTopProducts,
   getRecentSales,
   getLowStockProducts,
+  getUnpaidCredits,
+  markCreditPaid,
   getSetting,
   voidSale,
 } from '../db/database';
-import type { Product, SalesSummary, SaleWithItems, TopProduct } from '../db/database';
+import type { Product, Sale, SalesSummary, SaleWithItems, TopProduct } from '../db/database';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, type, radius, getTypeScale } from '../theme';
 import { formatNaira, formatSaleTime, formatTodayLong } from '../utils/format';
+import { buildReceiptText } from '../utils/receipt';
 import useCountUp from '../utils/useCountUp';
 import PressableScale from '../components/PressableScale';
 import Toast from '../components/Toast';
@@ -88,22 +91,26 @@ export default function ReportsScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [focusKey, setFocusKey] = useState(0);
   const [lastBackupAt, setLastBackupAt] = useState<string | null>(null);
+  const [shopName, setShopName] = useState<string | null>(null);
+  const [credits, setCredits] = useState<Sale[]>([]);
   const [toast, setToast] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [t, w, l, tp, r] = await Promise.all([
+      const [t, w, l, tp, r, c] = await Promise.all([
         getTodaySummary(),
         getWeekSummary(),
         getLowStockProducts(),
         getTopProducts(7),
         getRecentSales(10),
+        getUnpaidCredits(),
       ]);
       setToday(t);
       setWeek(w);
       setLow(l);
       setTop(tp);
       setRecent(r);
+      setCredits(c);
       setLoadError(null);
     } catch (e) {
       setLoadError("Couldn't load reports. Pull down to try again.");
@@ -111,7 +118,24 @@ export default function ReportsScreen() {
     getSetting('lastBackupAt')
       .then(setLastBackupAt)
       .catch(() => {});
+    getSetting('shopName')
+      .then(setShopName)
+      .catch(() => {});
   }, []);
+
+  // Unpaid credits grouped by customer for the Credits section.
+  const creditGroups = React.useMemo(() => {
+    const groups = new Map<string, { sales: Sale[]; owed: number }>();
+    for (const s of credits) {
+      const key = s.customer_name ?? '—';
+      const g = groups.get(key) ?? { sales: [], owed: 0 };
+      g.sales.push(s);
+      g.owed += s.total;
+      groups.set(key, g);
+    }
+    return [...groups.entries()].sort((a, b) => b[1].owed - a[1].owed);
+  }, [credits]);
+  const totalOwed = credits.reduce((sum, s) => sum + s.total, 0);
 
   // Gentle nudge, never blocking: shown once there are sales worth losing and
   // the last backup is missing or older than 7 days.
@@ -170,6 +194,36 @@ export default function ReportsScreen() {
     } catch (e) {
       Alert.alert("Couldn't share", 'The summary could not be shared. Please try again.');
     }
+  };
+
+  const confirmMarkPaid = (sale: Sale) => {
+    Alert.alert(
+      'Mark as paid?',
+      `${sale.customer_name ?? ''} — ${formatNaira(sale.total)}. The amount counts in your figures on the day the sale was made.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Mark as paid',
+          onPress: async () => {
+            try {
+              await markCreditPaid(sale.id);
+              setToast(`${formatNaira(sale.total)} collected`);
+              load();
+            } catch (e) {
+              Alert.alert(
+                'Not updated',
+                e instanceof Error && e.message ? e.message : 'Please try again.'
+              );
+              load();
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const sendReceipt = (sale: SaleWithItems) => {
+    Share.share({ message: buildReceiptText(shopName, sale) }).catch(() => {});
   };
 
   // Mistakes happen at the counter: void puts the items back in stock and
@@ -279,6 +333,11 @@ export default function ReportsScreen() {
               <Text style={styles.heroStatLabel}>items</Text>
             </Text>
           </View>
+          {today && today.owed > 0 && (
+            <Text style={[styles.owedLine, { color: colors.accent }]}>
+              Owed to you: {formatNaira(today.owed)}
+            </Text>
+          )}
         </Animated.View>
 
         <PressableScale
@@ -308,7 +367,43 @@ export default function ReportsScreen() {
               {week ? week.itemsSold : 0} <Text style={[styles.statLabel, { color: colors.muted }]}>items</Text>
             </Text>
           </View>
+          {week && week.owed > 0 && (
+            <Text style={[styles.owedLine, { color: colors.primary }]}>
+              Owed to you: {formatNaira(week.owed)}
+            </Text>
+          )}
         </Card>
+
+        {creditGroups.length > 0 && (
+          <Card index={2}>
+            <SectionLabel>CREDITS — {formatNaira(totalOwed)} OUTSTANDING</SectionLabel>
+            {creditGroups.map(([customer, group]) => (
+              <View key={customer} style={styles.creditGroup}>
+                <View style={styles.creditHeader}>
+                  <Text numberOfLines={1} style={[styles.creditName, { color: colors.text }]}>
+                    {customer}
+                  </Text>
+                  <Text style={[styles.creditOwed, { color: colors.text }]}>
+                    {formatNaira(group.owed)}
+                  </Text>
+                </View>
+                {group.sales.map((sale) => (
+                  <View key={sale.id} style={[styles.creditSaleRow, { borderBottomColor: colors.border }]}>
+                    <Text style={[styles.creditSaleInfo, { color: colors.muted }]}>
+                      {formatSaleTime(sale.created_at)} · {formatNaira(sale.total)}
+                    </Text>
+                    <PressableScale
+                      onPress={() => confirmMarkPaid(sale)}
+                      style={[styles.markPaidBtn, { backgroundColor: colors.subtle }]}
+                    >
+                      <Text style={[styles.markPaidText, { color: colors.primary }]}>Mark as paid</Text>
+                    </PressableScale>
+                  </View>
+                ))}
+              </View>
+            ))}
+          </Card>
+        )}
 
         <Card index={2}>
           <SectionLabel>RESTOCK LIST</SectionLabel>
@@ -404,6 +499,23 @@ export default function ReportsScreen() {
                             </Text>
                           </View>
                         )}
+                        {!voided && sale.is_credit === 1 && (
+                          <View
+                            style={[
+                              styles.voidedChip,
+                              { backgroundColor: sale.paid_at ? colors.subtle : colors.accent },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.voidedChipText,
+                                { color: sale.paid_at ? colors.muted : colors.onAccent },
+                              ]}
+                            >
+                              {sale.paid_at ? 'CREDIT · PAID' : `CREDIT · ${sale.customer_name ?? ''}`}
+                            </Text>
+                          </View>
+                        )}
                       </View>
                     </View>
                     <Text style={[styles.chevron, { color: colors.muted }]}>
@@ -424,12 +536,21 @@ export default function ReportsScreen() {
                       ))}
                     </View>
                   )}
-                  {expanded === sale.id && !voided && (
-                    <PressableScale onPress={() => confirmVoid(sale)} style={styles.voidBtn}>
-                      <Text style={[styles.voidBtnText, { color: colors.danger }]}>
-                        Void this sale
-                      </Text>
-                    </PressableScale>
+                  {expanded === sale.id && (
+                    <View style={styles.saleActions}>
+                      <PressableScale onPress={() => sendReceipt(sale)} style={styles.voidBtn}>
+                        <Text style={[styles.voidBtnText, { color: colors.primary }]}>
+                          Send receipt
+                        </Text>
+                      </PressableScale>
+                      {!voided && (
+                        <PressableScale onPress={() => confirmVoid(sale)} style={styles.voidBtn}>
+                          <Text style={[styles.voidBtnText, { color: colors.danger }]}>
+                            Void this sale
+                          </Text>
+                        </PressableScale>
+                      )}
+                    </View>
                   )}
                 </Animated.View>
               );
@@ -620,6 +741,59 @@ const styles = StyleSheet.create({
   voidBtnText: {
     fontSize: type.label,
     fontWeight: '700',
+  },
+  saleActions: {
+    flexDirection: 'row',
+    gap: spacing.xl,
+    alignItems: 'center',
+  },
+  owedLine: {
+    marginTop: spacing.sm,
+    fontSize: type.body,
+    fontWeight: '700',
+  },
+  creditGroup: {
+    marginBottom: spacing.md,
+  },
+  creditHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: spacing.md,
+    minHeight: 32,
+  },
+  creditName: {
+    flex: 1,
+    fontSize: type.body,
+    fontWeight: '700',
+  },
+  creditOwed: {
+    fontSize: type.body,
+    fontWeight: '800',
+  },
+  creditSaleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    paddingVertical: spacing.xs,
+    borderBottomWidth: 1,
+    minHeight: 48,
+  },
+  creditSaleInfo: {
+    flex: 1,
+    fontSize: type.label,
+  },
+  markPaidBtn: {
+    minHeight: 40,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  markPaidText: {
+    fontSize: type.label,
+    fontWeight: '800',
   },
   chevron: {
     fontSize: type.title,
