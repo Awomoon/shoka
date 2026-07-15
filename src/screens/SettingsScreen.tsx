@@ -319,7 +319,8 @@ const styles = StyleSheet.create({
     width: 62,
     height: 8,
     borderRadius: radius.pill,
-    transform: [{ rotate: '-20deg' }],
+    // Slants down-right, matching the app icon — it was mirrored before.
+    transform: [{ rotate: '20deg' }],
   },
   appName: {
     fontSize: type.title,
