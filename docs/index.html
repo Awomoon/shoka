@@ -66,6 +66,8 @@
   .btn-yellow{background:var(--yellow);color:var(--green-deep)}
   .btn-ghost{border:2px solid rgba(255,255,255,.55);color:#fff}
   .apk-note{font-size:.82rem;color:#A9C6B8;padding-bottom:44px}
+  .dl-count{font-size:.85rem;color:#A9C6B8;margin-bottom:6px}
+  .dl-count b{font-family:var(--disp);font-weight:700;color:var(--yellow);font-size:1rem}
 
   /* New-in-1.6 glass chips */
   .chips{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 22px}
@@ -262,6 +264,7 @@
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.04 2a9.9 9.9 0 0 0-8.4 15.2L2 22l4.9-1.6A9.9 9.9 0 1 0 12.04 2zm0 18.1c-1.6 0-3.1-.4-4.4-1.2l-.3-.2-2.9.9.9-2.8-.2-.3a8.1 8.1 0 1 1 6.9 3.6zm4.5-6c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1-.2.2-.6.8-.8 1-.1.2-.3.2-.5.1a6.6 6.6 0 0 1-3.3-2.9c-.2-.4.2-.4.6-1.2.1-.2 0-.4 0-.5l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.2.3-.9.9-.9 2.2s1 2.6 1.1 2.7c.1.2 1.9 3 4.7 4.2.7.3 1.2.5 1.6.6.7.2 1.3.2 1.8.1.6-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.2-.2-.5-.3z"/></svg>
             Chat on WhatsApp</a>
         </div>
+        <p class="dl-count" id="dlCount" hidden>⬇ <b id="dlNum">0</b> downloads and counting</p>
         <p class="apk-note">Available for Android today · iOS on the roadmap · Works fully offline</p>
       </div>
 
@@ -393,6 +396,31 @@
 </footer>
 
 <script>
+  // Live download counter — GitHub Releases tracks per-asset downloads, so
+  // no backend is needed. Sums every APK across all releases. Stays hidden
+  // if the request fails or the count is zero (never shows a fake number).
+  fetch('https://api.github.com/repos/Awomoon/shoka/releases')
+    .then(r => r.ok ? r.json() : Promise.reject())
+    .then(rels => {
+      let n = 0;
+      for (const rel of rels) for (const a of (rel.assets || [])) n += a.download_count || 0;
+      if (!n) return;
+      const wrap = document.getElementById('dlCount');
+      const num = document.getElementById('dlNum');
+      wrap.hidden = false;
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        num.textContent = n.toLocaleString();
+        return;
+      }
+      const t0 = performance.now();
+      requestAnimationFrame(function tick(t) {
+        const p = Math.min(1, (t - t0) / 800);
+        num.textContent = Math.round(n * (1 - Math.pow(1 - p, 3))).toLocaleString();
+        if (p < 1) requestAnimationFrame(tick);
+      });
+    })
+    .catch(() => {});
+
   // Scroll reveal with stagger (respects reduced motion via CSS)
   const io = new IntersectionObserver((es)=>{
     let batch = 0;
