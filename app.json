@@ -39,8 +39,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "906fae50-0f78-46db-8aa0-8c8611e5b00a"
+        "projectId": "29a5dbc1-d412-427a-9c06-1d2721a44987"
       }
-    }
+    },
+    "owner": "moontech"
   }
 }
