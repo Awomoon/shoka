@@ -4,6 +4,7 @@ import type { StyleProp, ViewStyle } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   FadeIn,
   LinearTransition,
@@ -77,7 +78,7 @@ export default function ReportsScreen() {
       style={styles.gearBtn}
       hitSlop={8}
     >
-      <Text style={styles.gearIcon}>⚙️</Text>
+      <Ionicons name="settings-outline" size={24} color={colors.text} />
     </PressableScale>
   );
 
@@ -272,7 +273,7 @@ export default function ReportsScreen() {
         style={[styles.screen, { backgroundColor: colors.background }]}
       >
         <ScreenHeader title="Reports" action={settingsAction} />
-        <EmptyState emoji="⚠️" title="Something went wrong" subtitle={loadError} actionLabel="Try again" onAction={load} />
+        <EmptyState icon="alert-circle-outline" tone="danger" title="Something went wrong" subtitle={loadError} actionLabel="Try again" onAction={load} />
       </SafeAreaView>
     );
   }
@@ -300,8 +301,8 @@ export default function ReportsScreen() {
             onPress={() => navigation.navigate('Settings')}
             style={[styles.backupBanner, { backgroundColor: colors.subtle }]}
           >
+            <Ionicons name="cloud-upload-outline" size={18} color={colors.muted} />
             <Text style={[styles.backupBannerText, { color: colors.muted }]}>
-              💾{' '}
               {backupAgeDays === null
                 ? 'No backup yet — your records live only on this phone.'
                 : `Last backup was ${backupAgeDays} days ago.`}{' '}
@@ -344,8 +345,9 @@ export default function ReportsScreen() {
           onPress={shareSummary}
           style={[styles.shareBtn, { backgroundColor: colors.raised }, elevation]}
         >
+          <Ionicons name="share-social-outline" size={20} color={colors.primary} />
           <Text style={[styles.shareBtnText, { color: colors.primary }]}>
-            📤 Share today's summary
+            Share today's summary
           </Text>
         </PressableScale>
 
@@ -518,9 +520,12 @@ export default function ReportsScreen() {
                         )}
                       </View>
                     </View>
-                    <Text style={[styles.chevron, { color: colors.muted }]}>
-                      {expanded === sale.id ? '▴' : '▾'}
-                    </Text>
+                    <Ionicons
+                      name={expanded === sale.id ? 'chevron-up' : 'chevron-down'}
+                      size={18}
+                      color={colors.muted}
+                      style={styles.chevron}
+                    />
                   </PressableScale>
                   {expanded === sale.id && (
                     <View style={voided ? styles.voidedDim : null}>
@@ -641,17 +646,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  gearIcon: {
-    fontSize: 20,
-  },
   backupBanner: {
     borderRadius: radius.md,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   shareBtn: {
     minHeight: 56,
     borderRadius: radius.md,
+    flexDirection: 'row',
+    gap: spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -660,6 +667,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   backupBannerText: {
+    flex: 1,
     fontSize: type.label,
     lineHeight: 18,
   },
@@ -796,7 +804,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   chevron: {
-    fontSize: type.title,
     paddingHorizontal: spacing.sm,
   },
   saleItemRow: {

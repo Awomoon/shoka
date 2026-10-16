@@ -9,6 +9,7 @@ import Animated, {
   Easing,
   useReducedMotion,
 } from 'react-native-reanimated';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, type, touch, radius } from '../theme';
 import PressableScale from './PressableScale';
@@ -61,7 +62,7 @@ export default function SuccessOverlay({
     >
       <Animated.View style={[styles.content, contentStyle]}>
         <View style={[styles.circle, { backgroundColor: colors.primary }]}>
-          <Text style={[styles.check, { color: colors.onPrimary }]}>✓</Text>
+          <Ionicons name="checkmark" size={52} color={colors.onPrimary} />
         </View>
         <Text style={[styles.message, { color: colors.overlayText }]}>{message}</Text>
         {actionLabel && onAction ? (
@@ -101,11 +102,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  check: {
-    fontSize: 48,
-    fontWeight: '700',
-    lineHeight: 56,
   },
   message: {
     marginTop: spacing.lg,

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { setSetting } from '../db/database';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, type, touch, radius } from '../theme';
@@ -31,7 +32,9 @@ export default function WelcomeScreen({ onDone }: { onDone: () => void }) {
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
       <View style={styles.body}>
-        <Text style={styles.emoji}>🏪</Text>
+        <View style={[styles.iconCircle, { backgroundColor: colors.tint }]}>
+          <Ionicons name="storefront-outline" size={40} color={colors.primary} />
+        </View>
         <Text style={[styles.title, { color: colors.text }]}>Welcome to Shoka</Text>
         <Text style={[styles.subtitle, { color: colors.muted }]}>
           Sell fast, know your stock, see your money — all offline.
@@ -80,10 +83,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: spacing.xl,
   },
-  emoji: {
-    fontSize: 56,
-    textAlign: 'center',
-    marginBottom: spacing.md,
+  iconCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: spacing.lg,
   },
   title: {
     fontSize: type.screenTitle,

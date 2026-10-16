@@ -186,7 +186,12 @@ export async function resetDatabase(): Promise<void> {
 
 // --- Settings (key-value) ---
 
-export type SettingKey = 'shopName' | 'lastBackupAt' | 'welcomeDone';
+export type SettingKey =
+  | 'shopName'
+  | 'lastBackupAt'
+  | 'welcomeDone'
+  | 'notifyDaily' // '1' = closing-time reminder scheduled
+  | 'notifyLowStock'; // '1' = notify when a sale leaves an item at/below threshold
 
 export interface SettingRow {
   key: string;

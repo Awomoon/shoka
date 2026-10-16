@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Text, View, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -8,6 +8,8 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import * as SystemUI from 'expo-system-ui';
+import * as Haptics from 'expo-haptics';
+import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -24,18 +26,29 @@ import SettingsScreen from './src/screens/SettingsScreen';
 import WelcomeScreen from './src/screens/WelcomeScreen';
 import RecoveryScreen from './src/screens/RecoveryScreen';
 import { getDb, getSetting } from './src/db/database';
+import { installNotificationHandler } from './src/utils/notifications';
 import type { RootTabParamList, RootStackParamList } from './src/navigation/types';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
+installNotificationHandler();
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
+interface TabIconProps {
+  name: keyof typeof Ionicons.glyphMap;
+  focusedName: keyof typeof Ionicons.glyphMap;
+  focused: boolean;
+  color: string;
+}
+
+// Vector icons render crisply at any density and match the theme colors —
+// emoji vary wildly across Android OEM fonts.
+function TabIcon({ name, focusedName, focused, color }: TabIconProps) {
   const { colors } = useTheme();
   return (
     <View style={styles.tabIcon}>
-      <Text style={{ fontSize: 20 }}>{emoji}</Text>
+      <Ionicons name={focused ? focusedName : name} size={22} color={color} />
       <View
         style={[
           styles.tabDot,
@@ -51,6 +64,12 @@ function Tabs() {
   const reduceMotion = useReducedMotion();
   return (
     <Tab.Navigator
+      screenListeners={{
+        // A tiny tick on tab change — the same feedback grammar as the cart.
+        tabPress: () => {
+          Haptics.selectionAsync().catch(() => {});
+        },
+      }}
       screenOptions={{
         // Screens render their own headers (ScreenHeader / GreetingHeader).
         headerShown: false,
@@ -67,17 +86,29 @@ function Tabs() {
       <Tab.Screen
         name="Sell"
         component={SellScreen}
-        options={{ tabBarIcon: ({ focused }) => <TabIcon emoji="🛒" focused={focused} /> }}
+        options={{
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon name="cart-outline" focusedName="cart" focused={focused} color={color} />
+          ),
+        }}
       />
       <Tab.Screen
         name="Stock"
         component={InventoryScreen}
-        options={{ tabBarIcon: ({ focused }) => <TabIcon emoji="📦" focused={focused} /> }}
+        options={{
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon name="cube-outline" focusedName="cube" focused={focused} color={color} />
+          ),
+        }}
       />
       <Tab.Screen
         name="Reports"
         component={ReportsScreen}
-        options={{ tabBarIcon: ({ focused }) => <TabIcon emoji="📊" focused={focused} /> }}
+        options={{
+          tabBarIcon: ({ focused, color }) => (
+            <TabIcon name="stats-chart-outline" focusedName="stats-chart" focused={focused} color={color} />
+          ),
+        }}
       />
     </Tab.Navigator>
   );

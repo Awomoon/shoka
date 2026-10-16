@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import type { KeyboardTypeOptions, ListRenderItem } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet, {
   BottomSheetScrollView,
@@ -397,7 +398,8 @@ export default function InventoryScreen() {
 
   const addAction = (
     <PressableScale onPress={openAdd} style={[styles.addBtn, { backgroundColor: colors.primary }]}>
-      <Text style={[styles.addBtnText, { color: colors.onPrimary }]}>＋ Add</Text>
+      <Ionicons name="add" size={20} color={colors.onPrimary} />
+      <Text style={[styles.addBtnText, { color: colors.onPrimary }]}>Add</Text>
     </PressableScale>
   );
 
@@ -410,7 +412,7 @@ export default function InventoryScreen() {
 
       {!loading && products.length === 0 ? (
         <EmptyState
-          emoji="📦"
+          icon="cube-outline"
           title="No products yet"
           subtitle="Add what you sell — name, price and how many you have."
           actionLabel="Add your first product"
@@ -545,6 +547,8 @@ const styles = StyleSheet.create({
     minHeight: 44,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.pill,
+    flexDirection: 'row',
+    gap: spacing.xs,
     alignItems: 'center',
     justifyContent: 'center',
   },

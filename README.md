@@ -4,7 +4,7 @@
 
 Built for small Nigerian shops running on cheap Android phones with unreliable internet. No account, no backend, no network needed: everything lives in SQLite on the device.
 
-> 📸 Screenshots (light + dark) coming after the first on-device pass — drop them in `docs/screenshots/`.
+> 📸 Screenshots (light + dark) coming after the first on-device pass — drop them in `landing/public/screenshots/` (they ship into `docs/` on the next landing build).
 
 ## Features
 
@@ -15,6 +15,7 @@ Built for small Nigerian shops running on cheap Android phones with unreliable i
 - ↩️ **Void a sale** *(new in 1.5)* — mistakes at the counter aren't permanent: voiding restores stock in one transaction and removes the sale from every total, while keeping it visible (greyed, VOIDED) in history.
 - 📤 **WhatsApp daily summary** *(new in 1.5)* — one tap composes the day's figures (sales, transactions, items, top item, low-stock list) as plain text for the native share sheet.
 - 🏪 **Shop profile & first-run welcome** *(new in 1.5)* — the shop's name greets the owner on the Sell screen and signs the shared summaries; a database that fails to open shows a recovery screen with restore-from-backup instead of a white screen.
+- 🔔 **Reminders & low-stock notifications** *(new in 1.7)* — an optional 8:00 pm reminder to check today's money and share the summary, and a tray alert the moment a sale leaves an item at its low-stock level. All local notifications — no server, works offline like everything else.
 - 🌗 **Light / dark / system themes** — every color flows from a single token file; dark mode raises surfaces by color step instead of shadows so it stays readable on cheap screens.
 - 🇳🇬 **Naira-native** — whole-number ₦ prices with thousands separators throughout.
 - ♿ **Reduced-motion aware** — decorative animations are skipped when the OS asks.
@@ -25,6 +26,7 @@ Built for small Nigerian shops running on cheap Android phones with unreliable i
 - [expo-sqlite](https://docs.expo.dev/versions/v57.0.0/sdk/sqlite/) — WAL mode, all DB access behind one module
 - [Reanimated 4](https://docs.swmansion.com/react-native-reanimated/) + [@gorhom/bottom-sheet](https://gorhom.dev/react-native-bottom-sheet/) for gestures and motion
 - React Navigation bottom tabs, AsyncStorage for the theme choice
+- [expo-notifications](https://docs.expo.dev/versions/v57.0.0/sdk/notifications/) for local reminders/alerts, [@expo/vector-icons](https://docs.expo.dev/guides/icons/) (Ionicons) for crisp themed icons
 
 ## Offline-first architecture
 
@@ -47,6 +49,17 @@ Scan the QR code with [Expo Go](https://expo.dev/go) on an Android phone (or run
 
 ```bash
 eas build -p android --profile preview
+```
+
+## Landing page
+
+The marketing site at [awomoon.github.io/shoka](https://awomoon.github.io/shoka/) is a Next.js + TypeScript + Tailwind app in [`landing/`](landing/). GitHub Pages serves the static export from `docs/` — never edit `docs/` by hand.
+
+```bash
+cd landing
+npm install
+npm run dev        # local preview at http://localhost:3000/shoka
+npm run build:docs # static-export into ../docs for GitHub Pages
 ```
 
 ## Roadmap

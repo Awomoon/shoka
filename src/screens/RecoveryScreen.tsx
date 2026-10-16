@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, Alert, ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { resetDatabase, restoreAllData, getDb } from '../db/database';
 import { pickAndValidateBackup } from '../utils/backup';
 import { formatDateTime } from '../utils/format';
@@ -60,7 +61,9 @@ export default function RecoveryScreen({ onRetry, onRecovered }: RecoveryScreenP
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.background }]}>
       <View style={styles.body}>
-        <Text style={styles.emoji}>🛠️</Text>
+        <View style={[styles.iconCircle, { backgroundColor: colors.subtle }]}>
+          <Ionicons name="construct-outline" size={40} color={colors.danger} />
+        </View>
         <Text style={[styles.title, { color: colors.text }]}>Your records couldn't be opened</Text>
         <Text style={[styles.subtitle, { color: colors.muted }]}>
           Something is wrong with the data stored on this phone. Try again, or restore from a
@@ -95,10 +98,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: spacing.xl,
   },
-  emoji: {
-    fontSize: 56,
-    textAlign: 'center',
-    marginBottom: spacing.md,
+  iconCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: spacing.lg,
   },
   title: {
     fontSize: type.screenTitle,

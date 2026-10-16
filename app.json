@@ -2,9 +2,9 @@
   "expo": {
     "name": "Shoka",
     "slug": "shoka",
-    "version": "1.6.0",
+    "version": "1.7.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/shoka-splash-preview.png",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
@@ -35,7 +35,16 @@
           }
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#0B5D3B",
+          "defaultChannel": "reminders"
+        }
+      ],
+      "expo-font"
     ],
     "extra": {
       "eas": {

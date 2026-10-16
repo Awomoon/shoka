@@ -37,12 +37,14 @@ import Animated, {
   useReducedMotion,
   ReduceMotion,
 } from 'react-native-reanimated';
+import { Ionicons } from '@expo/vector-icons';
 import { listProducts, recordSale, getSetting, getCreditCustomers } from '../db/database';
 import type { Product, SaleWithItems } from '../db/database';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, type, touch, radius, getTypeScale } from '../theme';
 import { formatNaira } from '../utils/format';
 import { buildReceiptText, nowSqlite } from '../utils/receipt';
+import { notifyLowStock } from '../utils/notifications';
 import PressableScale from '../components/PressableScale';
 import Toast from '../components/Toast';
 import SuccessOverlay from '../components/SuccessOverlay';
@@ -347,6 +349,21 @@ export default function SellScreen({ navigation }: SellScreenProps) {
           : `Sale recorded — ${formatNaira(total)}`
       );
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      // Tray alert for items this sale pushed to/below their threshold —
+      // only when the owner opted in, and never blocking the sale flow.
+      getSetting('notifyLowStock')
+        .then((enabled) => {
+          if (enabled !== '1') return;
+          const crossed = linesSnapshot
+            .filter(
+              (l) =>
+                l.product.stock_qty > l.product.low_stock_threshold &&
+                l.product.stock_qty - l.qty <= l.product.low_stock_threshold
+            )
+            .map((l) => ({ ...l.product, stock_qty: l.product.stock_qty - l.qty }));
+          if (crossed.length > 0) return notifyLowStock(crossed);
+        })
+        .catch(() => {});
     } catch (e) {
       Alert.alert(
         'Sale not recorded',
@@ -443,7 +460,7 @@ export default function SellScreen({ navigation }: SellScreenProps) {
       >
         <GreetingHeader shopName={shopName} />
         <EmptyState
-          emoji="🏪"
+          icon="storefront-outline"
           title="No products yet"
           subtitle="Add what you sell, then record sales in seconds."
           actionLabel="Add your first product"
@@ -461,7 +478,7 @@ export default function SellScreen({ navigation }: SellScreenProps) {
       <GreetingHeader shopName={shopName} />
       <View style={styles.searchWrap}>
         <View style={[styles.searchPill, { backgroundColor: colors.raised }, elevation]}>
-          <Text style={styles.searchIcon}>🔍</Text>
+          <Ionicons name="search" size={18} color={colors.muted} />
           <TextInput
             value={search}
             onChangeText={setSearch}
@@ -474,7 +491,7 @@ export default function SellScreen({ navigation }: SellScreenProps) {
       </View>
 
       {loadError ? (
-        <EmptyState emoji="⚠️" title="Something went wrong" subtitle={loadError} actionLabel="Try again" onAction={load} />
+        <EmptyState icon="alert-circle-outline" tone="danger" title="Something went wrong" subtitle={loadError} actionLabel="Try again" onAction={load} />
       ) : (
         <FlatList
           key={String(numColumns)} // numColumns can't change in place
@@ -573,8 +590,11 @@ export default function SellScreen({ navigation }: SellScreenProps) {
                   >
                     <Text style={[styles.cartRowPrice, { color: priceOverrides[product.id] !== undefined ? colors.primary : colors.muted }]}>
                       {formatNaira(priceFor(product))} each
-                      {priceOverrides[product.id] !== undefined ? `  (was ${formatNaira(product.price)})` : '  ✎'}
+                      {priceOverrides[product.id] !== undefined ? `  (was ${formatNaira(product.price)})` : ''}
                     </Text>
+                    {priceOverrides[product.id] === undefined && (
+                      <Ionicons name="pencil" size={12} color={colors.muted} />
+                    )}
                   </PressableScale>
                 </View>
                 <View style={styles.stepper}>
@@ -601,7 +621,7 @@ export default function SellScreen({ navigation }: SellScreenProps) {
                   style={styles.removeBtn}
                   hitSlop={8}
                 >
-                  <Text style={[styles.removeText, { color: colors.danger }]}>✕</Text>
+                  <Ionicons name="close" size={22} color={colors.danger} />
                 </PressableScale>
               </Animated.View>
             );
@@ -699,9 +719,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-  },
-  searchIcon: {
-    fontSize: type.body,
   },
   searchInput: {
     flex: 1,
@@ -822,7 +839,9 @@ const styles = StyleSheet.create({
   },
   priceTap: {
     minHeight: 32, // comfortably tappable without inflating the row
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   stepper: {
     flexDirection: 'row',
@@ -861,10 +880,6 @@ const styles = StyleSheet.create({
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  removeText: {
-    fontSize: type.title,
-    fontWeight: '700',
   },
   sheetTotalRow: {
     flexDirection: 'row',

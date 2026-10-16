@@ -1,11 +1,13 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, type, touch, radius } from '../theme';
 import PressableScale from './PressableScale';
 
 interface EmptyStateProps {
-  emoji: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  tone?: 'default' | 'danger';
   title: string;
   subtitle?: string;
   actionLabel?: string;
@@ -13,11 +15,22 @@ interface EmptyStateProps {
 }
 
 // Every empty state offers a next action.
-export default function EmptyState({ emoji, title, subtitle, actionLabel, onAction }: EmptyStateProps) {
+export default function EmptyState({
+  icon,
+  tone = 'default',
+  title,
+  subtitle,
+  actionLabel,
+  onAction,
+}: EmptyStateProps) {
   const { colors } = useTheme();
+  const circleBg = tone === 'danger' ? colors.subtle : colors.tint;
+  const iconColor = tone === 'danger' ? colors.danger : colors.primary;
   return (
     <View style={styles.wrap}>
-      <Text style={styles.emoji}>{emoji}</Text>
+      <View style={[styles.iconCircle, { backgroundColor: circleBg }]}>
+        <Ionicons name={icon} size={36} color={iconColor} />
+      </View>
       <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
       {subtitle ? <Text style={[styles.subtitle, { color: colors.muted }]}>{subtitle}</Text> : null}
       {actionLabel ? (
@@ -36,9 +49,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: spacing.xl,
   },
-  emoji: {
-    fontSize: 48,
-    marginBottom: spacing.md,
+  iconCircle: {
+    width: 88,
+    height: 88,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
   },
   title: {
     fontSize: type.title,

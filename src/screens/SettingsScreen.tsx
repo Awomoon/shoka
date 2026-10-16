@@ -1,10 +1,15 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TextInput, ScrollView, Alert, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, TextInput, ScrollView, Switch, Alert, ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Constants from 'expo-constants';
 import { getSetting, setSetting, restoreAllData } from '../db/database';
 import { exportBackup, pickAndValidateBackup } from '../utils/backup';
+import {
+  requestNotificationPermission,
+  scheduleDailyReminder,
+  cancelDailyReminder,
+} from '../utils/notifications';
 import { formatDateTime } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, type, touch, radius } from '../theme';
@@ -47,6 +52,8 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
   const [toast, setToast] = useState<string | null>(null);
   const [lastBackupAt, setLastBackupAt] = useState<string | null>(null);
   const [busy, setBusy] = useState<'export' | 'restore' | null>(null);
+  const [notifyDaily, setNotifyDaily] = useState(false);
+  const [notifyLowStock, setNotifyLowStock] = useState(false);
 
   const loadSettings = useCallback(() => {
     getSetting('shopName')
@@ -56,6 +63,12 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
       .catch(() => {});
     getSetting('lastBackupAt')
       .then(setLastBackupAt)
+      .catch(() => {});
+    getSetting('notifyDaily')
+      .then((v) => setNotifyDaily(v === '1'))
+      .catch(() => {});
+    getSetting('notifyLowStock')
+      .then((v) => setNotifyLowStock(v === '1'))
       .catch(() => {});
   }, []);
 
@@ -125,10 +138,61 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
     try {
       await setSetting('shopName', shopName.trim());
       setToast(shopName.trim() ? 'Shop name saved' : 'Shop name cleared');
+      // The daily reminder greets the shop by name — keep it in step.
+      if (notifyDaily) scheduleDailyReminder(shopName.trim() || null).catch(() => {});
     } catch (e) {
       setToast("Couldn't save the shop name");
     }
-  }, [shopName]);
+  }, [shopName, notifyDaily]);
+
+  const explainDenied = () => {
+    Alert.alert(
+      'Notifications are off',
+      "Your phone is blocking notifications from Shoka. Allow them in your phone's Settings, then turn this on again."
+    );
+  };
+
+  const toggleDaily = async (value: boolean) => {
+    try {
+      if (value) {
+        const granted = await requestNotificationPermission();
+        if (!granted) {
+          explainDenied();
+          return;
+        }
+        await scheduleDailyReminder(shopName.trim() || null);
+        await setSetting('notifyDaily', '1');
+        setNotifyDaily(true);
+        setToast('Daily reminder set for 8:00 pm');
+      } else {
+        await cancelDailyReminder();
+        await setSetting('notifyDaily', '0');
+        setNotifyDaily(false);
+      }
+    } catch (e) {
+      setToast("Couldn't update the reminder");
+    }
+  };
+
+  const toggleLowStock = async (value: boolean) => {
+    try {
+      if (value) {
+        const granted = await requestNotificationPermission();
+        if (!granted) {
+          explainDenied();
+          return;
+        }
+        await setSetting('notifyLowStock', '1');
+        setNotifyLowStock(true);
+        setToast('Low-stock alerts on');
+      } else {
+        await setSetting('notifyLowStock', '0');
+        setNotifyLowStock(false);
+      }
+    } catch (e) {
+      setToast("Couldn't update the alert");
+    }
+  };
 
   const version = Constants.expoConfig?.version ?? '—';
 
@@ -205,6 +269,37 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
           <Text style={[styles.hint, { color: colors.muted, marginBottom: 0 }]}>
             Send the backup file to your own WhatsApp or email. Restoring replaces everything with the backup's contents.
           </Text>
+        </SectionCard>
+
+        <SectionCard label="REMINDERS">
+          <View style={styles.switchRow}>
+            <View style={styles.switchTextWrap}>
+              <Text style={[styles.rowLabel, { color: colors.text }]}>End-of-day summary</Text>
+              <Text style={[styles.rowHint, { color: colors.muted }]}>
+                Every day at 8:00 pm — see today's money and share your summary before you close.
+              </Text>
+            </View>
+            <Switch
+              value={notifyDaily}
+              onValueChange={toggleDaily}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor={colors.card}
+            />
+          </View>
+          <View style={[styles.switchRow, styles.switchRowLast]}>
+            <View style={styles.switchTextWrap}>
+              <Text style={[styles.rowLabel, { color: colors.text }]}>Low-stock alerts</Text>
+              <Text style={[styles.rowHint, { color: colors.muted }]}>
+                Get a notification when a sale leaves an item at its low-stock level.
+              </Text>
+            </View>
+            <Switch
+              value={notifyLowStock}
+              onValueChange={toggleLowStock}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor={colors.card}
+            />
+          </View>
         </SectionCard>
 
         <SectionCard label="APPEARANCE">
@@ -299,6 +394,24 @@ const styles = StyleSheet.create({
   rowLabel: {
     fontSize: type.body,
     fontWeight: '600',
+  },
+  rowHint: {
+    fontSize: type.label,
+    marginTop: 2,
+    lineHeight: 18,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    minHeight: 44,
+    marginBottom: spacing.md,
+  },
+  switchRowLast: {
+    marginBottom: 0,
+  },
+  switchTextWrap: {
+    flex: 1,
   },
   logoRow: {
     flexDirection: 'row',
