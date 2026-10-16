@@ -12,6 +12,11 @@ dist/
 web-build/
 expo-env.d.ts
 
+# Next.js landing page (landing/ builds into docs/ via npm run build:docs)
+landing/.next/
+landing/out/
+landing/next-env.d.ts
+
 # Native
 .kotlin/
 *.orig.*
