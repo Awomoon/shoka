@@ -16,6 +16,7 @@ Built for small Nigerian shops running on cheap Android phones with unreliable i
 - 📤 **WhatsApp daily summary** *(new in 1.5)* — one tap composes the day's figures (sales, transactions, items, top item, low-stock list) as plain text for the native share sheet.
 - 🏪 **Shop profile & first-run welcome** *(new in 1.5)* — the shop's name greets the owner on the Sell screen and signs the shared summaries; a database that fails to open shows a recovery screen with restore-from-backup instead of a white screen.
 - 🔔 **Reminders & low-stock notifications** *(new in 1.7)* — an optional 8:00 pm reminder to check today's money and share the summary, and a tray alert the moment a sale leaves an item at its low-stock level. All local notifications — no server, works offline like everything else.
+- 🏁 **Counter-speed UX** *(new in 1.8)* — bestsellers float to the top of the Sell grid automatically; checkout is a branded in-sheet confirm step (one big "Paid" button, credit one tap away); undo for cart removals; tap a stock badge to quick-restock; search + low-stock filter on Stock; tab badges for low stock and outstanding credit; one-tap WhatsApp credit reminders; "Add ⟨search⟩" when a product isn't found.
 - 🌗 **Light / dark / system themes** — every color flows from a single token file; dark mode raises surfaces by color step instead of shadows so it stays readable on cheap screens.
 - 🇳🇬 **Naira-native** — whole-number ₦ prices with thousands separators throughout.
 - ♿ **Reduced-motion aware** — decorative animations are skipped when the OS asks.

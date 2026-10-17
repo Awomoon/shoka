@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import Animated, {
   FadeIn,
   FadeOut,
@@ -60,7 +60,15 @@ export default function SuccessOverlay({
       style={[styles.backdrop, { backgroundColor: colors.overlay }]}
       pointerEvents="auto"
     >
-      <Animated.View style={[styles.content, contentStyle]}>
+      {/* Tap anywhere to move on — the timeout below is only the fallback,
+          so a queue never waits on the celebration. */}
+      <Pressable
+        style={StyleSheet.absoluteFill}
+        onPress={onDone}
+        accessibilityRole="button"
+        accessibilityLabel="Dismiss"
+      />
+      <Animated.View style={[styles.content, contentStyle]} pointerEvents="box-none">
         <View style={[styles.circle, { backgroundColor: colors.primary }]}>
           <Ionicons name="checkmark" size={52} color={colors.onPrimary} />
         </View>

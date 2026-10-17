@@ -117,6 +117,78 @@ export function QuantityPad({
   );
 }
 
+// Quick restock from the Stock list: two taps and a number per item on
+// delivery day, without opening the full edit sheet.
+export function RestockPrompt({
+  productName,
+  currentStock,
+  visible,
+  onSubmit,
+  onClose,
+}: {
+  productName: string;
+  currentStock: number;
+  visible: boolean;
+  onSubmit: (qty: number) => void;
+  onClose: () => void;
+}) {
+  const { colors } = useTheme();
+  const [text, setText] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (visible) {
+      setText('');
+      setError(null);
+    }
+  }, [visible]);
+
+  const submit = (raw?: number) => {
+    const qty = raw ?? parseIntSafe(text);
+    if (qty === null || qty <= 0) {
+      setError('Enter how many arrived.');
+      return;
+    }
+    onSubmit(qty);
+  };
+
+  return (
+    <DialogShell visible={visible} title={`Restock ${productName}`} onClose={onClose}>
+      <Text style={[styles.hint, { color: colors.muted }]}>
+        {currentStock} in stock now · how many are you adding?
+      </Text>
+      <TextInput
+        value={text}
+        onChangeText={(t) => {
+          setText(t);
+          setError(null);
+        }}
+        placeholder="e.g. 24"
+        placeholderTextColor={colors.muted}
+        keyboardType="numeric"
+        autoFocus
+        onSubmitEditing={() => submit()}
+        style={[styles.input, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
+      />
+      {error ? <Text style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}
+      <View style={styles.quickRow}>
+        {[6, 12, 24].map((n) => (
+          <PressableScale
+            key={n}
+            onPress={() => submit(n)}
+            style={[styles.quickBtn, { backgroundColor: colors.subtle }]}
+          >
+            <Text style={[styles.quickText, { color: colors.text }]}>+{n}</Text>
+          </PressableScale>
+        ))}
+      </View>
+      <PressableScale onPress={() => submit()} style={[styles.mainBtn, { backgroundColor: colors.accent }]}>
+        <Text style={[styles.mainBtnText, { color: colors.onAccent }]}>Add to stock</Text>
+      </PressableScale>
+    </DialogShell>
+  );
+}
+
 // Per-sale price editor: adjusts what THIS sale charges; the product's
 // stored price is never touched from here.
 export function PriceEditor({

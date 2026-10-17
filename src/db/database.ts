@@ -101,6 +101,28 @@ export interface ProductUpdate {
   lowStockThreshold?: number;
 }
 
+// Lightweight change notifications: every write below emits once on success,
+// so app-level UI (the tab badges) can refresh without screens wiring it up.
+type DataListener = () => void;
+const dataListeners = new Set<DataListener>();
+
+export function onDataChanged(listener: DataListener): () => void {
+  dataListeners.add(listener);
+  return () => {
+    dataListeners.delete(listener);
+  };
+}
+
+function emitDataChanged(): void {
+  for (const listener of dataListeners) {
+    try {
+      listener();
+    } catch (e) {
+      // A broken listener must never break a write.
+    }
+  }
+}
+
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
 async function init(): Promise<SQLite.SQLiteDatabase> {
@@ -191,7 +213,8 @@ export type SettingKey =
   | 'lastBackupAt'
   | 'welcomeDone'
   | 'notifyDaily' // '1' = closing-time reminder scheduled
-  | 'notifyLowStock'; // '1' = notify when a sale leaves an item at/below threshold
+  | 'notifyLowStock' // '1' = notify when a sale leaves an item at/below threshold
+  | 'seenQtyTip'; // '1' = the long-press quantity tip has been shown once
 
 export interface SettingRow {
   key: string;
@@ -238,6 +261,7 @@ export async function addProduct(
     'INSERT INTO products (name, price, stock_qty, low_stock_threshold) VALUES (?, ?, ?, ?)',
     [String(name).trim(), Math.round(price), Math.max(0, Math.round(stockQty)), Math.max(0, Math.round(lowStockThreshold))]
   );
+  emitDataChanged();
   return result.lastInsertRowId;
 }
 
@@ -261,12 +285,14 @@ export async function updateProduct(id: number, fields: ProductUpdate): Promise<
   values.push(id);
   const db = await getDb();
   await db.runAsync(`UPDATE products SET ${sets.join(', ')} WHERE id = ?`, values);
+  emitDataChanged();
 }
 
 // Soft delete only — sales history references the product.
 export async function deactivateProduct(id: number): Promise<void> {
   const db = await getDb();
   await db.runAsync('UPDATE products SET is_active = 0 WHERE id = ?', [id]);
+  emitDataChanged();
 }
 
 // Restocking or corrections. Stock never goes below 0.
@@ -276,6 +302,7 @@ export async function adjustStock(id: number, delta: number): Promise<void> {
     'UPDATE products SET stock_qty = MAX(0, stock_qty + ?) WHERE id = ?',
     [Math.round(delta), id]
   );
+  emitDataChanged();
 }
 
 // Runs in one transaction: any failure rolls the whole sale back.
@@ -340,6 +367,7 @@ export async function recordSale(
       );
     }
   });
+  emitDataChanged();
   return { saleId, total };
 }
 
@@ -366,6 +394,7 @@ export async function markCreditPaid(saleId: number): Promise<void> {
     [saleId]
   );
   if (result.changes === 0) throw new Error('This sale is not an open credit.');
+  emitDataChanged();
 }
 
 // Recent credit customers, for name suggestions at checkout.
@@ -404,6 +433,7 @@ export async function voidSale(saleId: number): Promise<void> {
       );
     }
   });
+  emitDataChanged();
 }
 
 interface MoneyRow {
@@ -493,6 +523,37 @@ export async function getRecentSales(limit = 10): Promise<SaleWithItems[]> {
   return sales.map((s) => ({ ...s, items: items.filter((i) => i.sale_id === s.id) }));
 }
 
+export interface ProductSaleCount {
+  productId: number;
+  qtySold: number;
+}
+
+// Units sold per product over the last `days`, voided sales excluded. Powers
+// the frequency-first ordering of the Sell grid: what actually sells floats
+// to the top, everything else falls back to alphabetical.
+export async function getRecentSaleCounts(days = 7): Promise<ProductSaleCount[]> {
+  const db = await getDb();
+  return db.getAllAsync<ProductSaleCount>(
+    `SELECT si.product_id AS productId, SUM(si.qty) AS qtySold
+     FROM sale_items si JOIN sales s ON s.id = si.sale_id
+     WHERE date(s.created_at) >= date('now','localtime', ?) AND s.voided_at IS NULL
+     GROUP BY si.product_id`,
+    [`-${Math.max(0, days - 1)} days`]
+  );
+}
+
+// Yesterday's cash revenue (same accounting rules as the summaries): context
+// for the Reports hero card.
+export async function getYesterdayRevenue(): Promise<number> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ revenue: number }>(
+    `SELECT COALESCE(SUM(CASE WHEN is_credit = 0 OR paid_at IS NOT NULL THEN total ELSE 0 END), 0) AS revenue
+     FROM sales
+     WHERE date(created_at) = date('now','localtime','-1 day') AND voided_at IS NULL`
+  );
+  return row?.revenue ?? 0;
+}
+
 export async function getLowStockProducts(): Promise<Product[]> {
   const db = await getDb();
   return db.getAllAsync<Product>(
@@ -557,4 +618,5 @@ export async function restoreAllData(backup: BackupFile): Promise<void> {
       await db.runAsync('INSERT INTO settings (key, value) VALUES (?, ?)', [st.key, st.value]);
     }
   });
+  emitDataChanged();
 }

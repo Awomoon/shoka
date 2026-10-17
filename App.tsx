@@ -25,7 +25,7 @@ import ReportsScreen from './src/screens/ReportsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import WelcomeScreen from './src/screens/WelcomeScreen';
 import RecoveryScreen from './src/screens/RecoveryScreen';
-import { getDb, getSetting } from './src/db/database';
+import { getDb, getSetting, getLowStockProducts, getUnpaidCredits, onDataChanged } from './src/db/database';
 import { installNotificationHandler } from './src/utils/notifications';
 import type { RootTabParamList, RootStackParamList } from './src/navigation/types';
 
@@ -62,6 +62,34 @@ function TabIcon({ name, focusedName, focused, color }: TabIconProps) {
 function Tabs() {
   const { colors } = useTheme();
   const reduceMotion = useReducedMotion();
+
+  // Shop state at a glance: low-stock count on the Stock tab, a ₦ marker on
+  // Reports while credit is outstanding. Refreshes whenever the database
+  // changes (every write emits), so no screen has to wire anything up.
+  const [lowCount, setLowCount] = useState(0);
+  const [openCredits, setOpenCredits] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const refresh = () => {
+      getLowStockProducts()
+        .then((rows) => {
+          if (alive) setLowCount(rows.length);
+        })
+        .catch(() => {});
+      getUnpaidCredits()
+        .then((rows) => {
+          if (alive) setOpenCredits(rows.length);
+        })
+        .catch(() => {});
+    };
+    refresh();
+    const unsubscribe = onDataChanged(refresh);
+    return () => {
+      alive = false;
+      unsubscribe();
+    };
+  }, []);
+
   return (
     <Tab.Navigator
       screenListeners={{
@@ -99,6 +127,15 @@ function Tabs() {
           tabBarIcon: ({ focused, color }) => (
             <TabIcon name="cube-outline" focusedName="cube" focused={focused} color={color} />
           ),
+          tabBarBadge: lowCount > 0 ? lowCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: colors.danger,
+            color: colors.onDanger,
+            fontSize: 11,
+            fontWeight: '700',
+          },
+          tabBarAccessibilityLabel:
+            lowCount > 0 ? `Stock, ${lowCount} items low` : 'Stock',
         }}
       />
       <Tab.Screen
@@ -108,6 +145,15 @@ function Tabs() {
           tabBarIcon: ({ focused, color }) => (
             <TabIcon name="stats-chart-outline" focusedName="stats-chart" focused={focused} color={color} />
           ),
+          tabBarBadge: openCredits > 0 ? '₦' : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: colors.accent,
+            color: colors.onAccent,
+            fontSize: 11,
+            fontWeight: '800',
+          },
+          tabBarAccessibilityLabel:
+            openCredits > 0 ? 'Reports, credit outstanding' : 'Reports',
         }}
       />
     </Tab.Navigator>

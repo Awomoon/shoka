@@ -1,13 +1,15 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
+  TextInput,
   FlatList,
   Alert,
   StyleSheet,
 } from 'react-native';
 import type { KeyboardTypeOptions, ListRenderItem } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet, {
@@ -42,6 +44,10 @@ import PressableScale from '../components/PressableScale';
 import Toast from '../components/Toast';
 import EmptyState from '../components/EmptyState';
 import ScreenHeader from '../components/ScreenHeader';
+import { RestockPrompt } from '../components/SaleDialogs';
+import type { RootTabParamList } from '../navigation/types';
+
+type InventoryScreenProps = BottomTabScreenProps<RootTabParamList, 'Stock'>;
 
 const STAGGER_CAP = 8;
 const EASE = Easing.out(Easing.cubic);
@@ -182,13 +188,18 @@ const FormSheet = React.forwardRef<BottomSheet, FormSheetProps>(function FormShe
   );
 });
 
-export default function InventoryScreen() {
+export default function InventoryScreen({ route, navigation }: InventoryScreenProps) {
   const { colors, elevation } = useTheme();
   const reduceMotion = useReducedMotion();
 
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<'all' | 'low'>('all');
+  // Quick restock: tapping a row's stock badge opens a minimal prompt instead
+  // of the full edit sheet.
+  const [restockTarget, setRestockTarget] = useState<Product | null>(null);
 
   // Add form
   const [addForm, setAddForm] = useState<AddForm>({ name: '', price: '', stock: '', threshold: '' });
@@ -217,20 +228,58 @@ export default function InventoryScreen() {
     }, [load])
   );
 
-  // Low-stock products sort to the top.
+  // Low-stock products sort to the top; search and the Low filter narrow the
+  // list without changing that order.
   const isLow = (p: Product) => p.stock_qty <= p.low_stock_threshold;
   const sorted = useMemo(() => {
-    return [...products].sort((a, b) => {
-      if (isLow(a) !== isLow(b)) return isLow(a) ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
-  }, [products]);
+    const q = search.trim().toLowerCase();
+    return [...products]
+      .filter((p) => (filter === 'low' ? isLow(p) : true))
+      .filter((p) => (q ? p.name.toLowerCase().includes(q) : true))
+      .sort((a, b) => {
+        if (isLow(a) !== isLow(b)) return isLow(a) ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+  }, [products, search, filter]);
   const lowCount = useMemo(() => products.filter(isLow).length, [products]);
 
-  const openAdd = () => {
-    setAddForm({ name: '', price: '', stock: '', threshold: '' });
+  const openAdd = (prefillName = '') => {
+    setAddForm({ name: prefillName, price: '', stock: '', threshold: '' });
     setAddErrors({});
     addRef.current?.snapToIndex(0);
+  };
+
+  // The Sell screen's empty search hands over here: open the add sheet with
+  // the searched name already filled in.
+  const prefillName = route.params?.prefillName;
+  useEffect(() => {
+    if (!prefillName) return;
+    navigation.setParams({ prefillName: undefined });
+    openAdd(prefillName);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillName]);
+
+  const doQuickRestock = async (qty: number) => {
+    const target = restockTarget;
+    setRestockTarget(null);
+    if (!target) return;
+    const apply = async () => {
+      try {
+        await adjustStock(target.id, qty);
+        setToast(`+${qty} added to ${target.name}`);
+        load();
+      } catch (e) {
+        Alert.alert('Not saved', 'The restock could not be saved. Please try again.');
+      }
+    };
+    if (qty > ABSURD_QTY) {
+      Alert.alert('Please check this', `Adding ${qty} to ${target.name} — is that right?`, [
+        { text: 'Let me fix it', style: 'cancel' },
+        { text: 'Yes, add it', onPress: apply },
+      ]);
+      return;
+    }
+    apply();
   };
 
   const saveAdd = async () => {
@@ -367,37 +416,59 @@ export default function InventoryScreen() {
     );
   };
 
-  const renderProduct: ListRenderItem<Product> = ({ item, index }) => (
-    <Animated.View
-      entering={
-        reduceMotion
-          ? undefined
-          : FadeIn.delay(Math.min(index, STAGGER_CAP) * 40).duration(180)
-      }
-      layout={reduceMotion ? undefined : LinearTransition.duration(200)}
-    >
-      <PressableScale
-        onPress={() => openEdit(item)}
-        style={[styles.row, { backgroundColor: colors.raised }, elevation]}
+  const renderProduct: ListRenderItem<Product> = ({ item, index }) => {
+    const out = item.stock_qty <= 0;
+    const low = !out && isLow(item);
+    return (
+      <Animated.View
+        entering={
+          reduceMotion
+            ? undefined
+            : FadeIn.delay(Math.min(index, STAGGER_CAP) * 40).duration(180)
+        }
+        layout={reduceMotion ? undefined : LinearTransition.duration(200)}
       >
-        <StockStrip stock={item.stock_qty} threshold={item.low_stock_threshold} />
-        <View style={styles.rowInfo}>
-          <Text numberOfLines={1} style={[styles.rowName, { color: colors.text }]}>
-            {item.name}
-          </Text>
-          <Text style={[styles.rowPrice, { color: colors.muted }]}>
-            {formatNaira(item.price)}
-          </Text>
-        </View>
-        <View style={[styles.stockBadge, { backgroundColor: colors.subtle }]}>
-          <Text style={[styles.stockBadgeText, { color: colors.text }]}>{item.stock_qty}</Text>
-        </View>
-      </PressableScale>
-    </Animated.View>
-  );
+        <PressableScale
+          onPress={() => openEdit(item)}
+          style={[styles.row, { backgroundColor: colors.raised }, elevation]}
+        >
+          <StockStrip stock={item.stock_qty} threshold={item.low_stock_threshold} />
+          <View style={styles.rowInfo}>
+            <Text numberOfLines={1} style={[styles.rowName, { color: colors.text }]}>
+              {item.name}
+            </Text>
+            <Text style={[styles.rowPrice, { color: colors.muted }]}>
+              {formatNaira(item.price)}
+              {/* Stock state in words, not only in strip color — the strip is
+                  invisible to colorblind eyes. */}
+              {out ? '  ·  out of stock' : low ? '  ·  running low' : ''}
+            </Text>
+          </View>
+          {(out || low) && (
+            <Ionicons
+              name="alert-circle"
+              size={18}
+              color={out ? colors.danger : colors.accent}
+              accessibilityLabel={out ? 'Out of stock' : 'Running low'}
+            />
+          )}
+          {/* The badge is its own target: tap it to restock without opening
+              the full edit sheet. */}
+          <PressableScale
+            onPress={() => setRestockTarget(item)}
+            hitSlop={6}
+            style={[styles.stockBadge, { backgroundColor: colors.subtle }]}
+          >
+            <Text style={[styles.stockBadgeText, { color: colors.text }]}>{item.stock_qty}</Text>
+            <Ionicons name="add" size={14} color={colors.primary} />
+          </PressableScale>
+        </PressableScale>
+      </Animated.View>
+    );
+  };
 
   const addAction = (
-    <PressableScale onPress={openAdd} style={[styles.addBtn, { backgroundColor: colors.primary }]}>
+    <PressableScale onPress={() => openAdd()} style={[styles.addBtn, { backgroundColor: colors.primary }]}>
       <Ionicons name="add" size={20} color={colors.onPrimary} />
       <Text style={[styles.addBtnText, { color: colors.onPrimary }]}>Add</Text>
     </PressableScale>
@@ -416,18 +487,56 @@ export default function InventoryScreen() {
           title="No products yet"
           subtitle="Add what you sell — name, price and how many you have."
           actionLabel="Add your first product"
-          onAction={openAdd}
+          onAction={() => openAdd()}
         />
       ) : (
         <>
-          <View style={styles.summaryWrap}>
-            <Text style={[styles.summaryText, { color: colors.muted }]}>
-              {products.length} {products.length === 1 ? 'product' : 'products'}
-              {' · '}
-              <Text style={{ color: lowCount > 0 ? colors.danger : colors.muted }}>
-                {lowCount} low on stock
+          <View style={styles.searchWrap}>
+            <View style={[styles.searchPill, { backgroundColor: colors.raised }, elevation]}>
+              <Ionicons name="search" size={18} color={colors.muted} />
+              <TextInput
+                value={search}
+                onChangeText={setSearch}
+                placeholder="Search stock…"
+                placeholderTextColor={colors.muted}
+                style={[styles.searchInput, { color: colors.text }]}
+                returnKeyType="search"
+              />
+            </View>
+          </View>
+          <View style={styles.filterRow}>
+            <PressableScale
+              onPress={() => setFilter('all')}
+              style={[
+                styles.filterChip,
+                { backgroundColor: filter === 'all' ? colors.primary : colors.subtle },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  { color: filter === 'all' ? colors.onPrimary : colors.text },
+                ]}
+              >
+                All ({products.length})
               </Text>
-            </Text>
+            </PressableScale>
+            <PressableScale
+              onPress={() => setFilter('low')}
+              style={[
+                styles.filterChip,
+                { backgroundColor: filter === 'low' ? colors.danger : colors.subtle },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  { color: filter === 'low' ? colors.onDanger : lowCount > 0 ? colors.danger : colors.text },
+                ]}
+              >
+                Low stock ({lowCount})
+              </Text>
+            </PressableScale>
           </View>
           <FlatList
             data={sorted}
@@ -435,6 +544,25 @@ export default function InventoryScreen() {
             renderItem={renderProduct}
             contentContainerStyle={styles.listContent}
             keyboardShouldPersistTaps="handled"
+            ListEmptyComponent={
+              <View style={styles.noResultsWrap}>
+                <Text style={[styles.noResults, { color: colors.muted }]}>
+                  {filter === 'low' && !search.trim()
+                    ? 'Nothing is running low. 👍'
+                    : `No products match “${search.trim()}”`}
+                </Text>
+                {search.trim().length > 0 && (
+                  <PressableScale
+                    onPress={() => openAdd(search.trim())}
+                    style={[styles.addFromSearchBtn, { backgroundColor: colors.primary }]}
+                  >
+                    <Text style={[styles.addFromSearchText, { color: colors.onPrimary }]}>
+                      Add “{search.trim()}” as a product
+                    </Text>
+                  </PressableScale>
+                )}
+              </View>
+            }
           />
         </>
       )}
@@ -534,6 +662,14 @@ export default function InventoryScreen() {
         )}
       </FormSheet>
 
+      <RestockPrompt
+        visible={restockTarget !== null}
+        productName={restockTarget?.name ?? ''}
+        currentStock={restockTarget?.stock_qty ?? 0}
+        onSubmit={doQuickRestock}
+        onClose={() => setRestockTarget(null)}
+      />
+
       {toast && <Toast message={toast} onHide={() => setToast(null)} bottom={24} />}
     </SafeAreaView>
   );
@@ -556,14 +692,61 @@ const styles = StyleSheet.create({
     fontSize: type.body,
     fontWeight: '800',
   },
-  summaryWrap: {
+  searchWrap: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  searchPill: {
+    height: 52,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    height: '100%',
+    fontSize: type.body,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
   },
-  summaryText: {
+  filterChip: {
+    minHeight: 40,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterChipText: {
     fontSize: type.label,
-    fontWeight: '600',
-    letterSpacing: 0.3,
+    fontWeight: '700',
+  },
+  noResultsWrap: {
+    alignItems: 'center',
+    gap: spacing.lg,
+    marginTop: spacing.xl,
+    paddingHorizontal: spacing.lg,
+  },
+  noResults: {
+    textAlign: 'center',
+    fontSize: type.body,
+  },
+  addFromSearchBtn: {
+    minHeight: touch.minTarget,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addFromSearchText: {
+    fontSize: type.body,
+    fontWeight: '700',
   },
   listContent: {
     padding: spacing.lg,
@@ -599,12 +782,15 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   stockBadge: {
-    minWidth: 48,
+    minWidth: 56,
     height: 40,
     borderRadius: radius.sm,
+    flexDirection: 'row',
+    gap: 2,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.md,
+    marginLeft: spacing.sm,
   },
   stockBadgeText: {
     fontSize: type.body,

@@ -1,9 +1,10 @@
 import type { NavigatorScreenParams } from '@react-navigation/native';
 
-// Param list for the bottom-tab navigator. None of the tabs take params.
+// Param list for the bottom-tab navigator. Stock accepts an optional name to
+// prefill the add-product sheet (used by the Sell screen's empty search).
 export type RootTabParamList = {
   Sell: undefined;
-  Stock: undefined;
+  Stock: { prefillName?: string } | undefined;
   Reports: undefined;
 };
 

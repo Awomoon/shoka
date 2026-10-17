@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { View, Text, ScrollView, RefreshControl, Alert, Share, StyleSheet, useWindowDimensions } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -21,6 +21,7 @@ import {
   getRecentSales,
   getLowStockProducts,
   getUnpaidCredits,
+  getYesterdayRevenue,
   markCreditPaid,
   getSetting,
   voidSale,
@@ -94,17 +95,23 @@ export default function ReportsScreen() {
   const [lastBackupAt, setLastBackupAt] = useState<string | null>(null);
   const [shopName, setShopName] = useState<string | null>(null);
   const [credits, setCredits] = useState<Sale[]>([]);
+  const [yesterday, setYesterday] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
+
+  // "Owed to you" on the hero jumps here.
+  const scrollRef = useRef<ScrollView>(null);
+  const creditsY = useRef(0);
 
   const load = useCallback(async () => {
     try {
-      const [t, w, l, tp, r, c] = await Promise.all([
+      const [t, w, l, tp, r, c, y] = await Promise.all([
         getTodaySummary(),
         getWeekSummary(),
         getLowStockProducts(),
         getTopProducts(7),
         getRecentSales(10),
         getUnpaidCredits(),
+        getYesterdayRevenue(),
       ]);
       setToday(t);
       setWeek(w);
@@ -112,6 +119,7 @@ export default function ReportsScreen() {
       setTop(tp);
       setRecent(r);
       setCredits(c);
+      setYesterday(y);
       setLoadError(null);
     } catch (e) {
       setLoadError("Couldn't load reports. Pull down to try again.");
@@ -227,6 +235,19 @@ export default function ReportsScreen() {
     Share.share({ message: buildReceiptText(shopName, sale) }).catch(() => {});
   };
 
+  // One-tap, pre-written credit reminder — polite by default, sent through
+  // the same share sheet as receipts and summaries.
+  const remindCustomer = (customer: string, owed: number) => {
+    const message = [
+      `Good day ${customer}! A gentle reminder of ${formatNaira(owed)} outstanding at ${
+        shopName || 'our shop'
+      }.`,
+      'Thank you! 🙏',
+      '— via Shoka',
+    ].join('\n');
+    Share.share({ message }).catch(() => {});
+  };
+
   // Mistakes happen at the counter: void puts the items back in stock and
   // takes the sale out of every total, but keeps it visible in history.
   const confirmVoid = (sale: SaleWithItems) => {
@@ -285,6 +306,7 @@ export default function ReportsScreen() {
     >
       <ScreenHeader title="Reports" action={settingsAction} />
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl
@@ -334,10 +356,23 @@ export default function ReportsScreen() {
               <Text style={styles.heroStatLabel}>items</Text>
             </Text>
           </View>
-          {today && today.owed > 0 && (
-            <Text style={[styles.owedLine, { color: colors.accent }]}>
-              Owed to you: {formatNaira(today.owed)}
+          {/* "Is today good?" answered in the same glance. */}
+          {yesterday > 0 && (
+            <Text style={[styles.yesterdayLine, { color: colors.onPrimary }]}>
+              Yesterday {formatNaira(yesterday)}
             </Text>
+          )}
+          {today && today.owed > 0 && (
+            <PressableScale
+              onPress={() =>
+                scrollRef.current?.scrollTo({ y: Math.max(0, creditsY.current - 8), animated: true })
+              }
+              hitSlop={6}
+            >
+              <Text style={[styles.owedLine, { color: colors.accent }]}>
+                Owed to you: {formatNaira(today.owed)} ›
+              </Text>
+            </PressableScale>
           )}
         </Animated.View>
 
@@ -351,7 +386,70 @@ export default function ReportsScreen() {
           </Text>
         </PressableScale>
 
-        <Card index={1}>
+        {/* What needs the owner's attention comes first: open credits and the
+            restock list rise above the week's figures when they're non-empty. */}
+        {creditGroups.length > 0 && (
+          <View
+            onLayout={(e) => {
+              creditsY.current = e.nativeEvent.layout.y;
+            }}
+          >
+            <Card index={1}>
+              <SectionLabel>CREDITS — {formatNaira(totalOwed)} OUTSTANDING</SectionLabel>
+              {creditGroups.map(([customer, group]) => (
+                <View key={customer} style={styles.creditGroup}>
+                  <View style={styles.creditHeader}>
+                    <Text numberOfLines={1} style={[styles.creditName, { color: colors.text }]}>
+                      {customer}
+                    </Text>
+                    <PressableScale
+                      onPress={() => remindCustomer(customer, group.owed)}
+                      style={[styles.remindBtn, { backgroundColor: colors.tint }]}
+                    >
+                      <Text style={[styles.markPaidText, { color: colors.primary }]}>Remind</Text>
+                    </PressableScale>
+                    <Text style={[styles.creditOwed, { color: colors.text }]}>
+                      {formatNaira(group.owed)}
+                    </Text>
+                  </View>
+                  {group.sales.map((sale) => (
+                    <View key={sale.id} style={[styles.creditSaleRow, { borderBottomColor: colors.border }]}>
+                      <Text style={[styles.creditSaleInfo, { color: colors.muted }]}>
+                        {formatSaleTime(sale.created_at)} · {formatNaira(sale.total)}
+                      </Text>
+                      <PressableScale
+                        onPress={() => confirmMarkPaid(sale)}
+                        style={[styles.markPaidBtn, { backgroundColor: colors.subtle }]}
+                      >
+                        <Text style={[styles.markPaidText, { color: colors.primary }]}>Mark as paid</Text>
+                      </PressableScale>
+                    </View>
+                  ))}
+                </View>
+              ))}
+            </Card>
+          </View>
+        )}
+
+        {low.length > 0 && (
+          <Card index={1}>
+            <SectionLabel>RESTOCK LIST</SectionLabel>
+            {low.map((p) => (
+              <View key={p.id} style={[styles.line, { borderBottomColor: colors.border }]}>
+                <Text numberOfLines={1} style={[styles.lineName, { color: colors.text }]}>
+                  {p.name}
+                </Text>
+                <View style={[styles.lowBadge, { backgroundColor: colors.danger }]}>
+                  <Text style={[styles.lowBadgeText, { color: colors.onDanger }]}>
+                    {p.stock_qty} left
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </Card>
+        )}
+
+        <Card index={2}>
           <SectionLabel>THIS WEEK</SectionLabel>
           <Text
             numberOfLines={1}
@@ -376,58 +474,14 @@ export default function ReportsScreen() {
           )}
         </Card>
 
-        {creditGroups.length > 0 && (
+        {low.length === 0 && (
           <Card index={2}>
-            <SectionLabel>CREDITS — {formatNaira(totalOwed)} OUTSTANDING</SectionLabel>
-            {creditGroups.map(([customer, group]) => (
-              <View key={customer} style={styles.creditGroup}>
-                <View style={styles.creditHeader}>
-                  <Text numberOfLines={1} style={[styles.creditName, { color: colors.text }]}>
-                    {customer}
-                  </Text>
-                  <Text style={[styles.creditOwed, { color: colors.text }]}>
-                    {formatNaira(group.owed)}
-                  </Text>
-                </View>
-                {group.sales.map((sale) => (
-                  <View key={sale.id} style={[styles.creditSaleRow, { borderBottomColor: colors.border }]}>
-                    <Text style={[styles.creditSaleInfo, { color: colors.muted }]}>
-                      {formatSaleTime(sale.created_at)} · {formatNaira(sale.total)}
-                    </Text>
-                    <PressableScale
-                      onPress={() => confirmMarkPaid(sale)}
-                      style={[styles.markPaidBtn, { backgroundColor: colors.subtle }]}
-                    >
-                      <Text style={[styles.markPaidText, { color: colors.primary }]}>Mark as paid</Text>
-                    </PressableScale>
-                  </View>
-                ))}
-              </View>
-            ))}
-          </Card>
-        )}
-
-        <Card index={2}>
-          <SectionLabel>RESTOCK LIST</SectionLabel>
-          {low.length === 0 ? (
+            <SectionLabel>RESTOCK LIST</SectionLabel>
             <Text style={[styles.emptyText, { color: colors.muted }]}>
               Nothing is running low. 👍
             </Text>
-          ) : (
-            low.map((p) => (
-              <View key={p.id} style={[styles.line, { borderBottomColor: colors.border }]}>
-                <Text numberOfLines={1} style={[styles.lineName, { color: colors.text }]}>
-                  {p.name}
-                </Text>
-                <View style={[styles.lowBadge, { backgroundColor: colors.danger }]}>
-                  <Text style={[styles.lowBadgeText, { color: colors.onDanger }]}>
-                    {p.stock_qty} left
-                  </Text>
-                </View>
-              </View>
-            ))
-          )}
-        </Card>
+          </Card>
+        )}
 
         <Card index={3}>
           <SectionLabel>TOP SELLERS — LAST 7 DAYS</SectionLabel>
@@ -798,6 +852,18 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  remindBtn: {
+    minHeight: 32,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  yesterdayLine: {
+    marginTop: spacing.sm,
+    fontSize: type.label,
+    opacity: 0.75,
   },
   markPaidText: {
     fontSize: type.label,

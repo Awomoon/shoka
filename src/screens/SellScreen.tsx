@@ -38,7 +38,14 @@ import Animated, {
   ReduceMotion,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import { listProducts, recordSale, getSetting, getCreditCustomers } from '../db/database';
+import {
+  listProducts,
+  recordSale,
+  getSetting,
+  setSetting,
+  getCreditCustomers,
+  getRecentSaleCounts,
+} from '../db/database';
 import type { Product, SaleWithItems } from '../db/database';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, type, touch, radius, getTypeScale } from '../theme';
@@ -63,6 +70,12 @@ type SellScreenProps = BottomTabScreenProps<RootTabParamList, 'Sell'>;
 interface CartLine {
   product: Product;
   qty: number;
+}
+
+interface ToastState {
+  message: string;
+  actionLabel?: string;
+  onAction?: () => void;
 }
 
 interface ProductCardProps {
@@ -176,7 +189,12 @@ export default function SellScreen({ navigation }: SellScreenProps) {
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState<Record<number, number>>({}); // productId -> qty
   const [submitting, setSubmitting] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
+  // Units sold per product in the last 7 days — refreshed on focus only, so
+  // the grid never reshuffles mid-queue while sales are being rung up.
+  const [saleCounts, setSaleCounts] = useState<Record<number, number>>({});
+  // Checkout happens inside the sheet: cart view, then a branded confirm step.
+  const [checkoutStep, setCheckoutStep] = useState<'cart' | 'confirm'>('cart');
   const [success, setSuccess] = useState<string | null>(null);
   const [receiptText, setReceiptText] = useState<string | null>(null);
   const [shopName, setShopName] = useState<string | null>(null);
@@ -211,14 +229,38 @@ export default function SellScreen({ navigation }: SellScreenProps) {
   useFocusEffect(
     useCallback(() => {
       load();
+      getRecentSaleCounts()
+        .then((rows) => {
+          const map: Record<number, number> = {};
+          for (const r of rows) map[r.productId] = r.qtySold;
+          setSaleCounts(map);
+        })
+        .catch(() => {});
     }, [load])
   );
 
+  // One-time long-press tip: loaded once, shown at the moment it's useful.
+  const tipShownRef = useRef(false);
+  const rapidTapRef = useRef({ id: 0, count: 0, at: 0 });
+  useEffect(() => {
+    getSetting('seenQtyTip')
+      .then((v) => {
+        if (v === '1') tipShownRef.current = true;
+      })
+      .catch(() => {});
+  }, []);
+
+  // What actually sells floats to the top; ties and new products fall back to
+  // alphabetical, so the order stays predictable.
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return products;
-    return products.filter((p) => p.name.toLowerCase().includes(q));
-  }, [products, search]);
+    const base = q ? products.filter((p) => p.name.toLowerCase().includes(q)) : products;
+    return [...base].sort((a, b) => {
+      const byCount = (saleCounts[b.id] ?? 0) - (saleCounts[a.id] ?? 0);
+      if (byCount !== 0) return byCount;
+      return a.name.localeCompare(b.name);
+    });
+  }, [products, search, saleCounts]);
 
   const cartLines = useMemo<CartLine[]>(
     () =>
@@ -259,27 +301,46 @@ export default function SellScreen({ navigation }: SellScreenProps) {
 
   const addToCart = (product: Product, qty = 1): boolean => {
     if (product.stock_qty <= 0) {
-      setToast('Out of stock');
+      setToast({ message: 'Out of stock' });
       return false;
     }
     const current = cart[product.id] || 0;
     if (current + qty > product.stock_qty) {
-      setToast(`Only ${product.stock_qty} in stock`);
+      setToast({ message: `Only ${product.stock_qty} in stock` });
       return false;
     }
     setCart({ ...cart, [product.id]: current + qty });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+
+    // Teach the long-press quantity pad exactly when it's needed: on the 4th
+    // rapid tap of the same product. Shown once, ever.
+    if (qty === 1 && !tipShownRef.current) {
+      const now = Date.now();
+      const tap = rapidTapRef.current;
+      if (tap.id === product.id && now - tap.at < 4000) {
+        tap.count += 1;
+      } else {
+        tap.id = product.id;
+        tap.count = 1;
+      }
+      tap.at = now;
+      if (tap.count >= 4) {
+        tipShownRef.current = true;
+        setToast({ message: 'Tip: press and hold a product to type a quantity' });
+        setSetting('seenQtyTip', '1').catch(() => {});
+      }
+    }
     return true;
   };
 
   // Long-press quantity entry: sell 10 of something in one gesture.
   const openQtyPad = (product: Product) => {
     if (product.stock_qty <= 0) {
-      setToast('Out of stock');
+      setToast({ message: 'Out of stock' });
       return;
     }
     if ((cart[product.id] || 0) >= product.stock_qty) {
-      setToast(`Only ${product.stock_qty} in stock`);
+      setToast({ message: `Only ${product.stock_qty} in stock` });
       return;
     }
     setQtyPadProduct(product);
@@ -296,12 +357,28 @@ export default function SellScreen({ navigation }: SellScreenProps) {
   };
 
   const removeLine = (product: Product) => {
+    const removedQty = cart[product.id] || 0;
+    const removedOverride = priceOverrides[product.id];
     const nextCart = { ...cart };
     delete nextCart[product.id];
     setCart(nextCart);
     const nextOverrides = { ...priceOverrides };
     delete nextOverrides[product.id];
     setPriceOverrides(nextOverrides);
+    // A mis-tapped ✕ shouldn't cost a re-negotiated price: undo restores the
+    // quantity and any haggled price. Stock was never touched, so it's safe.
+    if (removedQty > 0) {
+      setToast({
+        message: `${product.name} removed`,
+        actionLabel: 'Undo',
+        onAction: () => {
+          setCart((c) => ({ ...c, [product.id]: removedQty }));
+          if (removedOverride !== undefined) {
+            setPriceOverrides((o) => ({ ...o, [product.id]: removedOverride }));
+          }
+        },
+      });
+    }
   };
 
   const doRecord = async (isCredit: boolean, customerName?: string) => {
@@ -371,6 +448,7 @@ export default function SellScreen({ navigation }: SellScreenProps) {
       );
     } finally {
       setSubmitting(false);
+      setCheckoutStep('cart');
       load();
     }
   };
@@ -382,21 +460,16 @@ export default function SellScreen({ navigation }: SellScreenProps) {
     setCreditPromptVisible(true);
   };
 
+  // Checkout step 1: switch the sheet to the branded confirm view. The old
+  // flow stacked system alerts here; the in-sheet step keeps the brand at the
+  // most important moment, makes "Paid" the one big obvious action, and shows
+  // the large-sale safeguard inline (plus a warning haptic) — still an
+  // explicit, deliberate confirmation before anything is recorded.
   const completeSale = () => {
-    const choosePayment = () => {
-      Alert.alert('How is this sale paid?', formatNaira(cartTotal), [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'On credit', onPress: openCreditPrompt },
-        { text: 'Paid now', onPress: () => doRecord(false) },
-      ]);
-    };
+    if (cartLines.length === 0) return;
+    setCheckoutStep('confirm');
     if (cartTotal > LARGE_SALE_THRESHOLD) {
-      Alert.alert('Large sale', `This sale is ${formatNaira(cartTotal)}. Record it?`, [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Yes, record it', onPress: choosePayment },
-      ]);
-    } else {
-      choosePayment();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
     }
   };
 
@@ -417,14 +490,12 @@ export default function SellScreen({ navigation }: SellScreenProps) {
     (props: BottomSheetFooterProps) => (
       <BottomSheetFooter {...props} bottomInset={insets.bottom + spacing.md}>
         <View style={styles.footerWrap}>
-          <PressableScale
-            disabled={submitting}
-            onPress={completeSale}
-            style={[styles.completeBtn, { backgroundColor: colors.primary }]}
-          >
-            {submitting ? (
-              <ActivityIndicator color={colors.onPrimary} />
-            ) : (
+          {checkoutStep === 'cart' ? (
+            <PressableScale
+              disabled={submitting}
+              onPress={completeSale}
+              style={[styles.completeBtn, { backgroundColor: colors.primary }]}
+            >
               <Text
                 numberOfLines={1}
                 adjustsFontSizeToFit
@@ -433,13 +504,41 @@ export default function SellScreen({ navigation }: SellScreenProps) {
               >
                 Complete Sale — {formatNaira(cartTotal)}
               </Text>
-            )}
-          </PressableScale>
+            </PressableScale>
+          ) : (
+            <>
+              <PressableScale
+                disabled={submitting}
+                onPress={() => doRecord(false)}
+                style={[styles.completeBtn, { backgroundColor: colors.primary }]}
+              >
+                {submitting ? (
+                  <ActivityIndicator color={colors.onPrimary} />
+                ) : (
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.7}
+                    style={[styles.completeBtnText, { color: colors.onPrimary }]}
+                  >
+                    Paid — record sale
+                  </Text>
+                )}
+              </PressableScale>
+              <PressableScale
+                disabled={submitting}
+                onPress={openCreditPrompt}
+                style={[styles.creditBtn, { borderColor: colors.border, backgroundColor: colors.card }]}
+              >
+                <Text style={[styles.creditBtnText, { color: colors.text }]}>On credit…</Text>
+              </PressableScale>
+            </>
+          )}
         </View>
       </BottomSheetFooter>
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [insets.bottom, submitting, cartTotal, cartLines, colors]
+    [insets.bottom, submitting, cartTotal, cartLines, colors, checkoutStep]
   );
 
   const renderProduct: ListRenderItem<Product> = ({ item, index }) => (
@@ -503,9 +602,23 @@ export default function SellScreen({ navigation }: SellScreenProps) {
           contentContainerStyle={styles.gridContent}
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
-            <Text style={[styles.noResults, { color: colors.muted }]}>
-              No products match “{search.trim()}”
-            </Text>
+            <View style={styles.noResultsWrap}>
+              <Text style={[styles.noResults, { color: colors.muted }]}>
+                No products match “{search.trim()}”
+              </Text>
+              {/* New stock often arrives before it's entered — turn the dead
+                  end into the fix. */}
+              {search.trim().length > 0 && (
+                <PressableScale
+                  onPress={() => navigation.navigate('Stock', { prefillName: search.trim() })}
+                  style={[styles.addFromSearchBtn, { backgroundColor: colors.primary }]}
+                >
+                  <Text style={[styles.addFromSearchText, { color: colors.onPrimary }]}>
+                    Add “{search.trim()}” to Stock
+                  </Text>
+                </PressableScale>
+              )}
+            </View>
           }
         />
       )}
@@ -553,6 +666,7 @@ export default function SellScreen({ navigation }: SellScreenProps) {
         snapPoints={['50%', '90%']}
         enableDynamicSizing={false}
         enablePanDownToClose
+        onClose={() => setCheckoutStep('cart')}
         animationConfigs={sheetAnimation}
         // Phones with system animations off (common on budget Androids) map to
         // reduced motion, which leaves the sheet stuck off-screen. Opening the
@@ -564,11 +678,43 @@ export default function SellScreen({ navigation }: SellScreenProps) {
         handleIndicatorStyle={{ backgroundColor: colors.border }}
       >
         <BottomSheetScrollView
-          contentContainerStyle={[styles.sheetContent, { paddingBottom: insets.bottom + 120 }]}
+          contentContainerStyle={[
+            styles.sheetContent,
+            { paddingBottom: insets.bottom + (checkoutStep === 'confirm' ? 210 : 120) },
+          ]}
           keyboardShouldPersistTaps="handled"
         >
-          <Text style={[styles.sheetTitle, { color: colors.text }]}>Cart</Text>
-          {cartLines.map(({ product, qty }) => {
+          <Text style={[styles.sheetTitle, { color: colors.text }]}>
+            {checkoutStep === 'cart' ? 'Cart' : 'Confirm sale'}
+          </Text>
+          {checkoutStep === 'confirm' && (
+            <View>
+              <Text style={[styles.confirmItems, { color: colors.muted }]}>
+                {cartCount} {cartCount === 1 ? 'item' : 'items'}
+              </Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.5}
+                style={[styles.confirmTotal, { color: colors.text, fontSize: t.hero }]}
+              >
+                {formatNaira(cartTotal)}
+              </Text>
+              {cartTotal > LARGE_SALE_THRESHOLD && (
+                <View style={[styles.largeSaleBanner, { backgroundColor: colors.subtle, borderColor: colors.accent }]}>
+                  <Ionicons name="warning" size={18} color={colors.accent} />
+                  <Text style={[styles.largeSaleText, { color: colors.text }]}>
+                    This is a large sale. Check the amount before recording.
+                  </Text>
+                </View>
+              )}
+              <PressableScale onPress={() => setCheckoutStep('cart')} hitSlop={8} style={styles.backToCart}>
+                <Text style={[styles.backToCartText, { color: colors.primary }]}>‹ Back to cart</Text>
+              </PressableScale>
+            </View>
+          )}
+          {checkoutStep === 'cart' &&
+          cartLines.map(({ product, qty }) => {
             const atLimit = qty >= product.stock_qty;
             return (
               <Animated.View
@@ -626,17 +772,19 @@ export default function SellScreen({ navigation }: SellScreenProps) {
               </Animated.View>
             );
           })}
-          <View style={styles.sheetTotalRow}>
-            <Text style={[styles.sheetTotalLabel, { color: colors.muted }]}>Total</Text>
-            <Text
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.6}
-              style={[styles.sheetTotalValue, { color: colors.text, fontSize: t.hero }]}
-            >
-              {formatNaira(cartTotal)}
-            </Text>
-          </View>
+          {checkoutStep === 'cart' && (
+            <View style={styles.sheetTotalRow}>
+              <Text style={[styles.sheetTotalLabel, { color: colors.muted }]}>Total</Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+                style={[styles.sheetTotalValue, { color: colors.text, fontSize: t.hero }]}
+              >
+                {formatNaira(cartTotal)}
+              </Text>
+            </View>
+          )}
         </BottomSheetScrollView>
       </BottomSheet>
 
@@ -681,7 +829,14 @@ export default function SellScreen({ navigation }: SellScreenProps) {
         onClose={() => setCreditPromptVisible(false)}
       />
 
-      {toast && <Toast message={toast} onHide={() => setToast(null)} />}
+      {toast && (
+        <Toast
+          message={toast.message}
+          actionLabel={toast.actionLabel}
+          onAction={toast.onAction}
+          onHide={() => setToast(null)}
+        />
+      )}
       {success && (
         <SuccessOverlay
           message={success}
@@ -775,11 +930,26 @@ const styles = StyleSheet.create({
     fontSize: type.body,
     fontWeight: '800',
   },
+  noResultsWrap: {
+    alignItems: 'center',
+    gap: spacing.lg,
+    marginTop: spacing.xl,
+    paddingHorizontal: spacing.lg,
+  },
   noResults: {
     textAlign: 'center',
-    marginTop: spacing.xl,
     fontSize: type.body,
-    paddingHorizontal: spacing.lg,
+  },
+  addFromSearchBtn: {
+    minHeight: touch.minTarget,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addFromSearchText: {
+    fontSize: type.body,
+    fontWeight: '700',
   },
   cartBarWrap: {
     position: 'absolute',
@@ -909,5 +1079,49 @@ const styles = StyleSheet.create({
   completeBtnText: {
     fontSize: 20,
     fontWeight: '800',
+  },
+  creditBtn: {
+    minHeight: touch.minTarget,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.sm,
+  },
+  creditBtnText: {
+    fontSize: type.body,
+    fontWeight: '700',
+  },
+  confirmItems: {
+    fontSize: type.body,
+  },
+  confirmTotal: {
+    fontWeight: '800',
+    marginTop: spacing.xs,
+  },
+  largeSaleBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    marginTop: spacing.lg,
+  },
+  largeSaleText: {
+    flex: 1,
+    fontSize: type.label,
+    lineHeight: 18,
+  },
+  backToCart: {
+    minHeight: 44,
+    justifyContent: 'center',
+    marginTop: spacing.md,
+    alignSelf: 'flex-start',
+  },
+  backToCartText: {
+    fontSize: type.body,
+    fontWeight: '700',
   },
 });
