@@ -2,9 +2,31 @@
 // Everything stays on the device (no push, no server) — same offline-first
 // rule as the rest of the app. Failures are swallowed on purpose: a missed
 // notification is never worth interrupting a sale.
-import * as Notifications from 'expo-notifications';
+//
+// IMPORTANT: expo-notifications must NOT be imported statically. Its JS
+// eagerly binds push-only native modules (ExpoTopicSubscriptionModule) that
+// Expo Go on Android does not ship — remote push was removed from Expo Go in
+// SDK 53 — so a static import crashes the whole app at launch there. The
+// lazy require below keeps Expo Go bootable; notifications simply no-op
+// until the app runs as a real build, where the native modules exist.
 import { Platform } from 'react-native';
 import type { Product } from '../db/database';
+
+type NotificationsModule = typeof import('expo-notifications');
+
+let cachedModule: NotificationsModule | null | undefined;
+
+function getNotifications(): NotificationsModule | null {
+  if (cachedModule !== undefined) return cachedModule;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    cachedModule = require('expo-notifications') as NotificationsModule;
+  } catch (e) {
+    // Running somewhere without the native modules (Expo Go on Android).
+    cachedModule = null;
+  }
+  return cachedModule;
+}
 
 export const DAILY_REMINDER_HOUR = 20; // 8:00 pm — closing time for most shops
 const DAILY_REMINDER_ID = 'daily-summary';
@@ -15,6 +37,8 @@ const STOCK_CHANNEL = 'stock';
 // Lets the owner see an alert even while Shoka is open in the foreground.
 // Without a handler, expo-notifications shows nothing at all.
 export function installNotificationHandler(): void {
+  const Notifications = getNotifications();
+  if (!Notifications) return;
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowBanner: true,
@@ -28,7 +52,7 @@ export function installNotificationHandler(): void {
 // Channels group the two kinds of alerts in Android's notification settings.
 // They must exist BEFORE requesting permission: Android 13+ won't show the
 // permission prompt until the app has at least one channel.
-async function ensureChannels(): Promise<void> {
+async function ensureChannels(Notifications: NotificationsModule): Promise<void> {
   if (Platform.OS !== 'android') return;
   await Notifications.setNotificationChannelAsync(REMINDER_CHANNEL, {
     name: 'Daily reminders',
@@ -40,10 +64,12 @@ async function ensureChannels(): Promise<void> {
   });
 }
 
-// True when notifications may be shown. Never throws.
+// True when notifications may be shown. Never throws; false in Expo Go.
 export async function requestNotificationPermission(): Promise<boolean> {
+  const Notifications = getNotifications();
+  if (!Notifications) return false;
   try {
-    await ensureChannels();
+    await ensureChannels(Notifications);
     const current = await Notifications.getPermissionsAsync();
     if (current.granted) return true;
     if (!current.canAskAgain) return false;
@@ -58,6 +84,8 @@ export async function requestNotificationPermission(): Promise<boolean> {
 // identifier replaces the previous one, so this is safe to call again when
 // the shop name changes.
 export async function scheduleDailyReminder(shopName: string | null): Promise<void> {
+  const Notifications = getNotifications();
+  if (!Notifications) return;
   await Notifications.scheduleNotificationAsync({
     identifier: DAILY_REMINDER_ID,
     content: {
@@ -74,6 +102,8 @@ export async function scheduleDailyReminder(shopName: string | null): Promise<vo
 }
 
 export async function cancelDailyReminder(): Promise<void> {
+  const Notifications = getNotifications();
+  if (!Notifications) return;
   try {
     await Notifications.cancelScheduledNotificationAsync(DAILY_REMINDER_ID);
   } catch (e) {
@@ -85,6 +115,8 @@ export async function cancelDailyReminder(): Promise<void> {
 // seller already sees the stock strips in the moment; this lands in the tray
 // so the restock isn't forgotten after the shop closes.
 export async function notifyLowStock(products: Product[]): Promise<void> {
+  const Notifications = getNotifications();
+  if (!Notifications) return;
   if (products.length === 0) return;
   const names = products.map((p) => `${p.name} (${p.stock_qty} left)`);
   const shown = names.slice(0, 3).join(', ');
