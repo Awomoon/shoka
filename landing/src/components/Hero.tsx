@@ -5,10 +5,10 @@ import { APK_URL, WA_DEMO } from "@/lib/links";
 import { GhostButton, GoldButton } from "./ui";
 
 const newChips = [
-  "Daily closing-time reminder",
+  "Bestsellers sort themselves first",
+  "One-tap checkout",
   "Low-stock alerts",
   'Credit sales ("I go pay later")',
-  "WhatsApp receipts",
 ];
 
 export default function Hero() {
@@ -33,7 +33,7 @@ export default function Hero() {
             phone you already own.
           </p>
 
-          <div className="fade-up mb-5.5 flex flex-wrap gap-2 [animation-delay:220ms]" aria-label="New in version 1.7">
+          <div className="fade-up mb-5.5 flex flex-wrap gap-2 [animation-delay:220ms]" aria-label="New in version 1.8">
             {newChips.map((chip) => (
               <span
                 key={chip}

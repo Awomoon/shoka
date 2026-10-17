@@ -8,16 +8,22 @@ import {
   ReceiptIcon,
   ShieldIcon,
   TagIcon,
+  TrendingIcon,
   UndoIcon,
 } from "./icons";
 import { Eyebrow, SectionTitle } from "./ui";
 
 const features: { icon: typeof BellIcon; title: string; body: string; badge?: string }[] = [
   {
+    icon: TrendingIcon,
+    title: "Your bestsellers, first",
+    body: "The Sell screen learns what your shop actually moves and floats those products to the top — no scrolling, no typing.",
+    badge: "New in 1.8",
+  },
+  {
     icon: BellIcon,
     title: "Smart reminders",
     body: "An 8:00 pm nudge to check today's money, and a tray alert the moment a sale leaves an item running low.",
-    badge: "New in 1.7",
   },
   {
     icon: GridIcon,

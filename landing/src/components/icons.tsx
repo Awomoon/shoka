@@ -144,6 +144,15 @@ export function GridIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function TrendingIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" {...strokeProps} {...props}>
+      <path d="m3 17 6-6 4 4 7-7" />
+      <path d="M14 8h6v6" />
+    </svg>
+  );
+}
+
 export function BellIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" {...strokeProps} {...props}>
